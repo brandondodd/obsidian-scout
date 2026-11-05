@@ -1,7 +1,7 @@
 {
 	"name": "obsidian-scout",
 	"version": "1.0.0",
-	"description": "Track movies, TV, books, anime, and manga in your notes, with metadata from TMDB, Open Library, AniList, and web links.",
+	"description": "Track movies, TV, books, games, anime, and manga in your notes, with metadata from TMDB, Open Library, AniList, RAWG, and web links.",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",

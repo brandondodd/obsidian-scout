@@ -2408,58 +2408,22 @@ h3.scout-section-title {
 
 /* ========================================================= settings tab */
 
-.scout-settings-tabs {
-	display: flex;
-	gap: 4px;
-	flex-wrap: wrap;
-	margin-bottom: 18px;
-	border-bottom: 1px solid var(--background-modifier-border);
-}
-.scout-settings-tabs button {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	padding: 7px 13px;
-	border: none;
-	border-radius: 6px 6px 0 0;
-	background: transparent;
-	box-shadow: none;
+/* The page itself is native SettingGroups; these cover only what Scout adds. */
+.scout-subpage-intro {
+	margin: 0 0 12px;
 	color: var(--text-muted);
-	font-size: 13px;
-	cursor: pointer;
-	margin-bottom: -1px;
-	border-bottom: 2px solid transparent;
-}
-.scout-settings-tabs button:hover {
-	background: var(--background-modifier-hover);
-	color: var(--text-normal);
-}
-.scout-settings-tabs button.is-active {
-	color: var(--text-accent);
-	border-bottom-color: var(--interactive-accent);
-	font-weight: 600;
-}
-
-.scout-tab-intro {
-	margin: -4px 0 14px;
-	color: var(--text-muted);
-	font-size: 13px;
+	font-size: var(--font-ui-small);
 	line-height: 1.5;
 }
-
-/* Indented and boxed rather than hung off a coloured left stripe. */
-.scout-provider-settings {
-	padding: 2px 12px;
-	margin-bottom: 14px;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--scout-radius, 6px);
+.scout-settings .scout-input-wide {
+	width: min(320px, 45vw);
 }
 .scout-setting-warning {
 	color: var(--text-warning);
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 }
 .scout-field-list {
-	font-size: 12px;
+	font-size: var(--font-ui-small);
 	column-count: 2;
 }
 .scout-field-group {
@@ -2468,30 +2432,17 @@ h3.scout-section-title {
 	margin-top: 6px;
 }
 
-.scout-custom-field {
-	padding: 10px 12px;
-	margin-bottom: 10px;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--scout-radius, 6px);
-}
-.scout-custom-field .setting-item {
-	border-top: none;
-	padding: 5px 0;
-}
-.scout-custom-field-head {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 10px;
-	margin-bottom: 4px;
-	font-weight: 600;
+/* The "applies to" checkboxes run full width under their label. */
+.scout-settings .setting-item:has(> .scout-kind-checks) {
+	flex-wrap: wrap;
 }
 .scout-kind-checks {
+	flex-basis: 100%;
 	display: flex;
 	flex-wrap: wrap;
-	gap: 10px;
-	padding: 4px 0 2px;
-	font-size: 12px;
+	gap: 6px 14px;
+	padding-top: 8px;
+	font-size: var(--font-ui-small);
 	color: var(--text-muted);
 }
 .scout-kind-checks label {
@@ -4036,4 +3987,347 @@ body.is-phone .scout-combo-list li {
 }
 .scout-home-optin button {
 	margin-inline-start: 8px;
+}
+
+/* ================================================================== import */
+
+.scout-empty-actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 8px;
+}
+.scout-import {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+.scout-import-sources {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+.scout-import-sources button.is-active {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+.scout-import-hint {
+	margin: 0;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.5;
+}
+.scout-import-counts {
+	margin: 0;
+}
+.scout-import-progress {
+	width: 100%;
+	accent-color: var(--interactive-accent);
+}
+.scout-import-list {
+	max-height: 45vh;
+	overflow-y: auto;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+}
+.scout-import-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 4px 8px;
+	padding: 6px 10px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	cursor: pointer;
+}
+.scout-import-row:last-child {
+	border-bottom: none;
+}
+.scout-import-row.is-disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+.scout-import-all {
+	position: sticky;
+	top: 0;
+	background: var(--background-secondary);
+	font-weight: var(--font-semibold);
+}
+.scout-import-title {
+	flex: 1 1 12em;
+	min-width: 0;
+}
+.scout-import-match {
+	flex-basis: 100%;
+	padding-left: 24px;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+.scout-import-badge {
+	padding: 0 6px;
+	border-radius: var(--radius-s);
+	background: var(--background-modifier-error);
+	color: var(--text-on-accent);
+	font-size: var(--font-ui-smaller);
+}
+.scout-import-missing ul {
+	max-height: 25vh;
+	overflow-y: auto;
+	margin: 6px 0 0;
+}
+.scout-import-missing textarea {
+	width: 100%;
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+}
+
+/* =================================================================== stats */
+
+.scout-stats-container {
+	padding: 0;
+	overflow-y: auto;
+}
+.scout-stats-page {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	max-width: 1180px;
+	margin: 0 auto;
+	padding: 22px 22px 48px;
+}
+.scout-stats-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 10px 18px;
+}
+.scout-stats-head h2 {
+	margin: 0;
+	flex: 1 1 auto;
+}
+.scout-stats-filters {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+.scout-stats-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+}
+.scout-stats-pair {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+	gap: 16px;
+}
+.scout-stats-card {
+	min-width: 0;
+	padding: 14px 16px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	background: var(--background-primary-alt);
+}
+.scout-stats-card h3 {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin: 0 0 10px;
+	font-size: var(--font-ui-medium);
+}
+.scout-stats-card p {
+	margin: 0 0 10px;
+}
+.scout-stats-note {
+	font-weight: normal;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+.scout-stats-edit {
+	margin-inline-start: auto;
+	font-size: var(--font-ui-smaller);
+}
+.scout-stats-goal-prompt {
+	display: flex;
+	justify-content: flex-end;
+}
+
+/* Bars */
+.scout-bars {
+	display: flex;
+	align-items: stretch;
+	gap: 4px;
+	height: 140px;
+}
+.scout-bar {
+	flex: 1 1 0;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	justify-content: flex-end;
+	align-items: center;
+	gap: 2px;
+	padding: 0;
+	background: none;
+	border: none;
+	box-shadow: none;
+	height: 100%;
+}
+.scout-bar.is-clickable {
+	cursor: pointer;
+}
+.scout-bar.is-clickable:hover .scout-bar-fill,
+.scout-bar.is-clickable:focus-visible .scout-bar-fill {
+	opacity: 0.8;
+}
+.scout-bar-fill {
+	width: 100%;
+	max-width: 48px;
+	min-height: 1px;
+	border-radius: var(--radius-s) var(--radius-s) 0 0;
+	background: var(--interactive-accent);
+}
+.scout-bar-value,
+.scout-bar-label {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 100%;
+}
+.scout-bar-label {
+	flex: 0 0 auto;
+}
+
+/* Heatmap: a column per week, Monday at the top. */
+.scout-heatmap-scroll {
+	overflow-x: auto;
+}
+.scout-heatmap {
+	display: grid;
+	grid-template-rows: repeat(7, 11px);
+	grid-auto-flow: column;
+	grid-auto-columns: 11px;
+	gap: 3px;
+	width: max-content;
+}
+.scout-heat {
+	border-radius: 2px;
+	background: var(--background-modifier-border);
+}
+.scout-heat.is-outside {
+	background: transparent;
+}
+.scout-heat.is-level-1 {
+	background: color-mix(in srgb, var(--interactive-accent) 35%, var(--background-modifier-border));
+}
+.scout-heat.is-level-2 {
+	background: color-mix(in srgb, var(--interactive-accent) 60%, var(--background-modifier-border));
+}
+.scout-heat.is-level-3 {
+	background: color-mix(in srgb, var(--interactive-accent) 80%, var(--background-modifier-border));
+}
+.scout-heat.is-level-4 {
+	background: var(--interactive-accent);
+}
+
+/* Meters, figures, lists */
+.scout-meter {
+	position: relative;
+	height: 6px;
+	border-radius: 3px;
+	background: var(--background-modifier-border);
+	overflow: hidden;
+}
+.scout-meter-fill {
+	position: absolute;
+	inset: 0 auto 0 0;
+	background: var(--interactive-accent);
+}
+.scout-stats-goals,
+.scout-stats-traits,
+.scout-stats-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+.scout-stats-goals li {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+.scout-stats-goal-edit {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+	gap: 8px;
+}
+.scout-stats-goal-edit label {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	font-size: var(--font-ui-small);
+}
+.scout-stats-trait {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 2px 8px;
+	width: 100%;
+	height: auto;
+	padding: 4px 6px;
+	text-align: start;
+	background: none;
+	box-shadow: none;
+}
+.scout-stats-trait:hover {
+	background: var(--background-modifier-hover);
+}
+.scout-stats-trait .scout-meter {
+	grid-column: 1 / -1;
+}
+.scout-stats-trait-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.scout-stats-figures {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	margin: 0;
+}
+.scout-stats-figures dt {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+}
+.scout-stats-figures dd {
+	margin: 0;
+}
+.scout-stats-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: var(--font-ui-small);
+}
+.scout-stats-table caption {
+	text-align: start;
+	color: var(--text-muted);
+	padding-bottom: 4px;
+}
+.scout-stats-table th,
+.scout-stats-table td {
+	padding: 3px 6px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	text-align: start;
+}
+
+body.is-phone .scout-stats-page {
+	padding: 14px 12px 40px;
+}
+body.is-phone .scout-bars {
+	gap: 2px;
+	height: 110px;
 }

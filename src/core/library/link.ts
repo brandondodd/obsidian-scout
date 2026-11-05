@@ -51,9 +51,18 @@ function audience(item: MediaItem): number {
 	return item.ratingCount ?? item.popularity ?? 0;
 }
 
+/**
+ * What a match is looked for against: a note, or a row from an import.
+ *
+ * A row has no filename, which is the only difference that matters here.
+ */
+export type MatchTarget = Pick<LibraryEntry, "title" | "kind" | "year"> & {
+	basename?: string;
+};
+
 /** The names a note answers to: its title property, and its filename. */
-function namesOf(entry: LibraryEntry): string[] {
-	return entry.title === entry.basename
+function namesOf(entry: MatchTarget): string[] {
+	return !entry.basename || entry.title === entry.basename
 		? [entry.title]
 		: [entry.title, entry.basename];
 }
@@ -64,7 +73,7 @@ function namesOf(entry: LibraryEntry): string[] {
  * `titleScore` returns 1 only for normalized string equality, so this is an
  * exact title match — punctuation, case, and accents aside.
  */
-function isSameWork(entry: LibraryEntry, item: MediaItem): boolean {
+function isSameWork(entry: MatchTarget, item: MediaItem): boolean {
 	if (item.ref.kind !== entry.kind) return false;
 	return namesOf(entry).some((name) => titleScore(name, item.title) >= 1);
 }
@@ -89,7 +98,7 @@ function dominant(items: MediaItem[]): MediaItem | undefined {
  * sources in the first place.
  */
 export function certainMatch(
-	entry: LibraryEntry,
+	entry: MatchTarget,
 	candidates: readonly MediaItem[],
 ): MediaItem | undefined {
 	const exact = candidates.filter((item) => isSameWork(entry, item));

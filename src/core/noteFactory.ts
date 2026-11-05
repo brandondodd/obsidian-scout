@@ -1,7 +1,12 @@
 import { App, Notice, TFile, normalizePath } from "obsidian";
 import { assignedPropertyType } from "./library/mutate";
 import { needsTagSafeNames, tagSafeList } from "./library/tags";
-import { NoteWriter, noticeForOutcome, type WriteOutcome } from "./noteWriter";
+import {
+	NoteWriter,
+	noticeForOutcome,
+	type CollisionPolicy,
+	type WriteOutcome,
+} from "./noteWriter";
 import { isDetailable, type MediaProvider } from "./provider";
 import type { ProviderRegistry } from "./registry";
 import type { ScoutSettings } from "./settings/store";
@@ -12,6 +17,22 @@ import {
 	type TemplateValue,
 } from "./types";
 import { defaultTemplateFor } from "../templates/defaults";
+
+/**
+ * How one creation departs from the user's settings.
+ *
+ * For a batch — an import writing two hundred notes — which must not open
+ * two hundred tabs, stack two hundred notices, or stop to ask about each
+ * same-named note.
+ */
+export interface CreateOptions {
+	/** No notices; the caller reports the batch itself. */
+	quiet?: boolean;
+	/** Overrides "open after create". */
+	open?: boolean;
+	/** Overrides the collision policy. */
+	policy?: Exclude<CollisionPolicy, "prompt">;
+}
 
 /**
  * Turns a chosen search result into a note.
@@ -71,11 +92,14 @@ export class NoteFactory {
 	async create(
 		item: MediaItem,
 		signal: AbortSignal,
+		options: CreateOptions = {},
 	): Promise<WriteOutcome | null> {
 		const kind = item.ref.kind;
 		const config = this.settings.kind(kind);
+		const quiet = options.quiet === true;
 
 		if (!config.outputFolder) {
+			if (quiet) return null;
 			new Notice(
 				`Set an output folder for ${kind} notes in Scout's settings first.`,
 			);
@@ -84,14 +108,18 @@ export class NoteFactory {
 
 		const provider = this.registry.get(item.ref.providerId);
 		const enriched = await this.enrich(provider, item, signal);
-		const template = await this.resolveTemplate(kind, config.templatePath);
+		const template = await this.resolveTemplate(kind, config.templatePath, quiet);
 
 		const { content, missing } = renderTemplate(
 			template,
 			this.withTagSafeGenres(toTemplateContext(enriched)),
 		);
 
-		if (missing.length > 0 && this.settings.core("warnOnMissingFields")) {
+		if (
+			!quiet &&
+			missing.length > 0 &&
+			this.settings.core("warnOnMissingFields")
+		) {
 			new Notice(
 				`Template used ${missing.length} unknown field${
 					missing.length === 1 ? "" : "s"
@@ -103,11 +131,11 @@ export class NoteFactory {
 			folder: config.outputFolder,
 			title: enriched.title,
 			content,
-			policy: this.settings.core("collisionPolicy"),
-			openAfterCreate: this.settings.core("openAfterCreate"),
+			policy: options.policy ?? this.settings.core("collisionPolicy"),
+			openAfterCreate: options.open ?? this.settings.core("openAfterCreate"),
 		});
 
-		if (outcome) noticeForOutcome(outcome);
+		if (outcome && !quiet) noticeForOutcome(outcome);
 		return outcome;
 	}
 
@@ -130,6 +158,7 @@ export class NoteFactory {
 	private async resolveTemplate(
 		kind: MediaItem["ref"]["kind"],
 		templatePath: string,
+		quiet = false,
 	): Promise<string> {
 		if (!templatePath) return defaultTemplateFor(kind);
 
@@ -137,6 +166,7 @@ export class NoteFactory {
 			normalizePath(templatePath),
 		);
 		if (!(file instanceof TFile)) {
+			if (quiet) return defaultTemplateFor(kind);
 			new Notice(
 				`Template "${templatePath}" not found — using the built-in template.`,
 			);

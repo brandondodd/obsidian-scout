@@ -1,4 +1,5 @@
 import type { HttpClient } from "./http";
+import type { ImportRecord } from "./import/types";
 import type { SettingDescriptor, SettingsScope } from "./settings/types";
 import type {
 	Series,
@@ -186,6 +187,16 @@ export interface Discoverable {
 	discover(query: DiscoverQuery, ctx: RequestContext): Promise<MediaItem[]>;
 }
 
+/**
+ * Sources that can hand over somebody's own public lists.
+ *
+ * What makes an import from them exact rather than a title search: each entry
+ * arrives with the source's record attached.
+ */
+export interface ListSource {
+	userList(username: string, ctx: RequestContext): Promise<ImportRecord[]>;
+}
+
 /** For providers behind OAuth rather than a pasted token. */
 export interface Authenticated {
 	authenticate(): Promise<void>;
@@ -229,6 +240,10 @@ export function isDiscoverable(
 
 export function isEnrichable(p: MediaProvider): p is MediaProvider & Enrichable {
 	return typeof (p as Partial<Enrichable>).traits === "function";
+}
+
+export function isListSource(p: MediaProvider): p is MediaProvider & ListSource {
+	return typeof (p as Partial<ListSource>).userList === "function";
 }
 
 export function isAuthenticated(

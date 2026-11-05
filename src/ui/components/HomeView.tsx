@@ -12,6 +12,7 @@ import {
 	type FeedbackVerdict,
 } from "../../core/library/feedback";
 import { buildHome, type HomeData } from "../../core/library/home";
+import { goalProgress } from "../../core/library/stats";
 import {
 	rankReasons,
 	reasonChip,
@@ -32,7 +33,9 @@ import {
 import { traitKey } from "../../core/library/traits";
 import { MEDIA_KIND_LABELS, type MediaItem } from "../../core/types";
 import { ScoutDetailModal } from "../detailModal";
+import { ScoutImportModal } from "../importModal";
 import { openLibrary } from "../libraryView";
+import { openStats } from "../statsView";
 import { ScoutSearchModal } from "../searchModal";
 import { discoverableKinds, suggestionPort } from "../suggestionPort";
 import MediaCard from "./Card";
@@ -105,7 +108,7 @@ export default function HomeView({ ctx }: HomeViewProps): React.ReactElement {
 
 	return (
 		<div className="scout-home">
-			<Header ctx={ctx} home={home} />
+			<Header ctx={ctx} home={home} entries={entries} />
 
 			<Row
 				title="On the go"
@@ -170,11 +173,18 @@ function greeting(now: Date): string {
 function Header({
 	ctx,
 	home,
+	entries,
 }: {
 	ctx: ScoutContext;
 	home: HomeData;
+	entries: readonly LibraryEntry[];
 }): React.ReactElement {
 	const { summary } = home;
+	const goals = useMemo(
+		() => goalProgress(ctx.settings.library(), entries, new Date().getFullYear()),
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+		[entries, ctx.settings.library().goals],
+	);
 	const average =
 		summary.averageFraction !== null
 			? formatRating(summary.averageFraction * 10)
@@ -209,11 +219,21 @@ function Header({
 				<button onClick={() => void openLibrary(ctx.app)}>
 					<Icon name="library-big" size={15} /> Whole library
 				</button>
+				<button onClick={() => void openStats(ctx.app)}>
+					<Icon name="bar-chart-3" size={15} /> Stats
+				</button>
 			</div>
 
 			<dl className="scout-home-figures">
 				<Figure label="In the library" value={String(summary.total)} />
 				{average && <Figure label="Average score" value={`${average}/10`} />}
+				{goals.map((goal) => (
+					<Figure
+						key={`goal-${goal.kind}`}
+						label={`${MEDIA_KIND_LABELS[goal.kind]} goal`}
+						value={`${goal.done}/${goal.target}`}
+					/>
+				))}
 				{summary.byKind.slice(0, 3).map((at) => (
 					<Figure
 						key={at.kind}
@@ -1015,12 +1035,17 @@ function EmptyLibrary({ ctx }: { ctx: ScoutContext }): React.ReactElement {
 				through, what to start next, and what you might like — and it gets
 				better at the last one the more you rate.
 			</p>
-			<button
-				className="mod-cta"
-				onClick={() => new ScoutSearchModal(ctx).open()}
-			>
-				<Icon name="search" size={15} /> Search for something
-			</button>
+			<div className="scout-empty-actions">
+				<button
+					className="mod-cta"
+					onClick={() => new ScoutSearchModal(ctx).open()}
+				>
+					<Icon name="search" size={15} /> Search for something
+				</button>
+				<button onClick={() => new ScoutImportModal(ctx).open()}>
+					<Icon name="import" size={15} /> Import a library
+				</button>
+			</div>
 		</div>
 	);
 }

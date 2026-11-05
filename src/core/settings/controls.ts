@@ -8,7 +8,14 @@ import {
 } from "obsidian";
 import type { SettingDescriptor, SettingsScope } from "./types";
 
-/** Reusable settings controls, shared by every section of the tab. */
+/**
+ * Reusable settings controls.
+ *
+ * Each helper returns a function that fills in a `Setting`, so the same helper
+ * works inside a `SettingGroup` (`group.addSetting(toggle({...}))`) and on a
+ * bare container in a subpage (`toggle({...})(new Setting(el))`).
+ */
+export type Row = (setting: Setting) => void;
 
 /* ------------------------------------------------------------ path pickers */
 
@@ -63,154 +70,161 @@ class FolderPickerModal extends FuzzySuggestModal<TFolder> {
 }
 
 /**
- * Text field plus a "Choose" button. Written once and reused everywhere, and
- * it holds a direct reference to its own input rather than looking the input
- * up by position among its siblings.
+ * Text field plus a folder/file browse button. Holds a direct reference to its
+ * own input rather than looking the input up among its siblings.
  */
-export function addPathSetting(
+export function path(
 	app: App,
-	container: HTMLElement,
 	options: {
 		name: string;
-		desc: string;
-		placeholder: string;
+		desc?: string;
+		placeholder?: string;
 		value: string;
 		type: "file" | "folder";
 		extensions?: string[];
 		onChange: (value: string) => void;
 	},
-): void {
-	let inputEl: HTMLInputElement | null = null;
-
-	new Setting(container)
-		.setName(options.name)
-		.setDesc(options.desc)
-		.addText((text) => {
-			inputEl = text.inputEl;
-			text.setPlaceholder(options.placeholder)
-				.setValue(options.value)
-				.onChange(options.onChange);
-		})
-		.addButton((btn) =>
-			btn
-				.setButtonText("Choose")
-				.setCta()
-				.onClick(() => {
-					const apply = (path: string) => {
-						if (!inputEl) return;
-						inputEl.value = path;
-						options.onChange(path);
-					};
-					if (options.type === "file") {
-						new FilePickerModal(app, options.extensions, (f) =>
-							apply(f.path),
-						).open();
-					} else {
-						new FolderPickerModal(app, (f) => apply(f.path)).open();
-					}
-				}),
-		);
+): Row {
+	return (setting) => {
+		let inputEl: HTMLInputElement | null = null;
+		setting
+			.setName(options.name)
+			.setDesc(options.desc ?? "")
+			.addText((text) => {
+				inputEl = text.inputEl;
+				text.setPlaceholder(options.placeholder ?? "")
+					.setValue(options.value)
+					.onChange(options.onChange);
+			})
+			.addExtraButton((btn) =>
+				btn
+					.setIcon(options.type === "file" ? "file-search" : "folder-search")
+					.setTooltip("Browse")
+					.onClick(() => {
+						const apply = (p: string) => {
+							if (!inputEl) return;
+							inputEl.value = p;
+							options.onChange(p);
+						};
+						if (options.type === "file") {
+							new FilePickerModal(app, options.extensions, (f) =>
+								apply(f.path),
+							).open();
+						} else {
+							new FolderPickerModal(app, (f) => apply(f.path)).open();
+						}
+					}),
+			);
+	};
 }
 
 /* ------------------------------------------------------------- shorthands */
 
-export function addText(
-	container: HTMLElement,
-	options: {
-		name: string;
-		desc?: string;
-		value: string;
-		placeholder?: string;
-		wide?: boolean;
-		onChange: (value: string) => void;
-	},
-): Setting {
-	return new Setting(container)
-		.setName(options.name)
-		.setDesc(options.desc ?? "")
-		.addText((t) => {
-			t.setPlaceholder(options.placeholder ?? "")
-				.setValue(options.value)
-				.onChange(options.onChange);
-			if (options.wide) t.inputEl.style.width = "min(320px, 45vw)";
-		});
+export function text(options: {
+	name: string;
+	desc?: string;
+	value: string;
+	placeholder?: string;
+	wide?: boolean;
+	onChange: (value: string) => void;
+}): Row {
+	return (setting) =>
+		setting
+			.setName(options.name)
+			.setDesc(options.desc ?? "")
+			.addText((t) => {
+				t.setPlaceholder(options.placeholder ?? "")
+					.setValue(options.value)
+					.onChange(options.onChange);
+				if (options.wide) t.inputEl.addClass("scout-input-wide");
+			});
 }
 
-export function addToggle(
-	container: HTMLElement,
-	options: {
-		name: string;
-		desc?: string;
-		value: boolean;
-		onChange: (value: boolean) => void;
-	},
-): Setting {
-	return new Setting(container)
-		.setName(options.name)
-		.setDesc(options.desc ?? "")
-		.addToggle((t) => t.setValue(options.value).onChange(options.onChange));
+export function toggle(options: {
+	name: string;
+	desc?: string;
+	value: boolean;
+	onChange: (value: boolean) => void;
+}): Row {
+	return (setting) =>
+		setting
+			.setName(options.name)
+			.setDesc(options.desc ?? "")
+			.addToggle((t) => t.setValue(options.value).onChange(options.onChange));
 }
 
-export function addDropdown<T extends string>(
-	container: HTMLElement,
-	options: {
-		name: string;
-		desc?: string;
-		value: T;
-		options: Record<string, string>;
-		onChange: (value: T) => void;
-	},
-): Setting {
-	return new Setting(container)
-		.setName(options.name)
-		.setDesc(options.desc ?? "")
-		.addDropdown((d) =>
-			d
-				.addOptions(options.options)
-				.setValue(options.value)
-				.onChange((v) => options.onChange(v as T)),
-		);
+export function dropdown<T extends string>(options: {
+	name: string;
+	desc?: string;
+	value: T;
+	options: Record<string, string>;
+	onChange: (value: T) => void;
+}): Row {
+	return (setting) =>
+		setting
+			.setName(options.name)
+			.setDesc(options.desc ?? "")
+			.addDropdown((d) =>
+				d
+					.addOptions(options.options)
+					.setValue(options.value)
+					.onChange((v) => options.onChange(v as T)),
+			);
 }
 
-export function addSlider(
-	container: HTMLElement,
-	options: {
-		name: string;
-		desc?: string;
-		value: number;
-		min: number;
-		max: number;
-		step: number;
-		/** Every move of the handle. Keep it cheap — this fires per pixel. */
-		onChange: (value: number) => void;
-		/**
-		 * Once, when the handle is let go.
-		 *
-		 * Where the write belongs on a slider with any real range to it. Saving
-		 * from `onChange` means a debounced write and a full notify on every step
-		 * of a drag, and every view listening re-renders under the pointer — which
-		 * on a thirty-step control is thirty re-renders to answer one question.
-		 */
-		onCommit?: (value: number) => void;
-	},
-): Setting {
-	const setting = new Setting(container)
-		.setName(options.name)
-		.setDesc(options.desc ?? "")
-		.addSlider((s) => {
-			s
-				.setLimits(options.min, options.max, options.step)
-				.setValue(options.value)
-				.setDynamicTooltip()
-				.onChange(options.onChange);
-			const commit = options.onCommit;
-			if (commit) {
+/**
+ * A slider that saves once, when the handle is let go.
+ *
+ * Saving on every step of a drag means a write and a full notify per pixel, and
+ * every listening view re-renders under the pointer. `describe`, if given,
+ * rewords the description live as the handle moves, without re-rendering.
+ */
+export function slider(options: {
+	name: string;
+	desc?: string;
+	describe?: (value: number) => string;
+	value: number;
+	min: number;
+	max: number;
+	step: number;
+	onCommit: (value: number) => void;
+}): Row {
+	return (setting) => {
+		const describe = options.describe;
+		setting
+			.setName(options.name)
+			.setDesc(describe ? describe(options.value) : (options.desc ?? ""))
+			.addSlider((s) => {
+				s.setLimits(options.min, options.max, options.step)
+					.setValue(options.value)
+					.setDynamicTooltip()
+					.onChange((v) => {
+						if (describe) setting.setDesc(describe(v));
+					});
 				s.sliderEl.addEventListener("change", () =>
-					commit(Number(s.sliderEl.value)),
+					options.onCommit(Number(s.sliderEl.value)),
 				);
-			}
-		});
-	return setting;
+			});
+	};
+}
+
+/**
+ * A row that opens a subpage, the way Sync's "Excluded folders → Manage" does.
+ * The description should summarise what is behind the button.
+ */
+export function manage(options: {
+	name: string;
+	desc: string;
+	buttonText?: string;
+	onClick: () => void;
+}): Row {
+	return (setting) =>
+		setting
+			.setName(options.name)
+			.setDesc(options.desc)
+			.addButton((b) =>
+				b.setButtonText(options.buttonText ?? "Manage").onClick(options.onClick),
+			);
 }
 
 /* ----------------------------------------------------- descriptor renderer */
@@ -229,77 +243,64 @@ export function renderDescriptor(
 		await scope.set(descriptor.key, value);
 		if (descriptor.rerenderOnChange) rerender();
 	};
+	const setting = () =>
+		new Setting(container)
+			.setName(descriptor.name)
+			.setDesc(descriptor.desc ?? "");
 
 	switch (descriptor.type) {
 		case "toggle":
-			new Setting(container)
-				.setName(descriptor.name)
-				.setDesc(descriptor.desc ?? "")
-				.addToggle((t) =>
-					t
-						.setValue(scope.get(descriptor.key, descriptor.default))
-						.onChange(commit),
-				);
+			setting().addToggle((t) =>
+				t.setValue(scope.get(descriptor.key, descriptor.default)).onChange(commit),
+			);
 			break;
 
 		case "text":
-			new Setting(container)
-				.setName(descriptor.name)
-				.setDesc(descriptor.desc ?? "")
-				.addText((t) => {
-					t.setPlaceholder(descriptor.placeholder ?? "")
-						.setValue(scope.get(descriptor.key, descriptor.default))
-						.onChange(commit);
-				});
+			setting().addText((t) => {
+				t.setPlaceholder(descriptor.placeholder ?? "")
+					.setValue(scope.get(descriptor.key, descriptor.default))
+					.onChange(commit);
+			});
 			break;
 
 		case "secret":
-			new Setting(container)
-				.setName(descriptor.name)
-				.setDesc(descriptor.desc ?? "")
-				.addComponent((el) =>
-					new SecretComponent(app, el)
-						.setValue(scope.get(descriptor.key, ""))
-						.onChange(commit),
-				);
+			setting().addComponent((el) =>
+				new SecretComponent(app, el)
+					.setValue(scope.get(descriptor.key, ""))
+					.onChange(commit),
+			);
 			break;
 
 		case "file":
 		case "folder":
-			addPathSetting(app, container, {
+			path(app, {
 				name: descriptor.name,
-				desc: descriptor.desc ?? "",
-				placeholder: descriptor.placeholder ?? "",
+				desc: descriptor.desc,
+				placeholder: descriptor.placeholder,
 				value: scope.get(descriptor.key, descriptor.default),
 				type: descriptor.type,
 				extensions:
 					descriptor.type === "file" ? descriptor.extensions : undefined,
 				onChange: commit,
-			});
+			})(new Setting(container));
 			break;
 
 		case "dropdown":
-			new Setting(container)
-				.setName(descriptor.name)
-				.setDesc(descriptor.desc ?? "")
-				.addDropdown((d) =>
-					d
-						.addOptions(descriptor.options)
-						.setValue(scope.get(descriptor.key, descriptor.default))
-						.onChange(commit),
-				);
+			setting().addDropdown((d) =>
+				d
+					.addOptions(descriptor.options)
+					.setValue(scope.get(descriptor.key, descriptor.default))
+					.onChange(commit),
+			);
 			break;
 
 		case "button":
-			new Setting(container)
-				.setName(descriptor.name)
-				.setDesc(descriptor.desc ?? "")
-				.addButton((b) => {
-					b.setButtonText(descriptor.buttonText).onClick(() =>
-						descriptor.onClick(scope),
-					);
-					if (descriptor.cta) b.setCta();
-				});
+			setting().addButton((b) => {
+				b.setButtonText(descriptor.buttonText).onClick(() =>
+					descriptor.onClick(scope),
+				);
+				if (descriptor.cta) b.setCta();
+			});
 			break;
 
 		case "info": {

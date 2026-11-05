@@ -15,11 +15,13 @@ import { ScoutSettings } from "./core/settings/store";
 import { ScoutSettingTab } from "./core/settings/tab";
 import { AniListProvider } from "./providers/anilist/provider";
 import { OpenLibraryProvider } from "./providers/openlibrary/provider";
+import { RawgProvider } from "./providers/rawg/provider";
 import { TmdbProvider } from "./providers/tmdb/provider";
 import { WebLinkProvider } from "./providers/weblink/provider";
 import { HOME_VIEW_TYPE, ScoutHomeView, openHome } from "./ui/homeView";
 import { LIBRARY_VIEW_TYPE, ScoutLibraryView, openLibrary } from "./ui/libraryView";
 import { ScoutSearchModal } from "./ui/searchModal";
+import { STATS_VIEW_TYPE, ScoutStatsView } from "./ui/statsView";
 
 /**
  * The provider table — the one place a new source is added.
@@ -38,6 +40,7 @@ const PROVIDERS: {
 	{ id: "tmdb", create: (ctx) => new TmdbProvider(ctx) },
 	{ id: "openlibrary", create: (ctx) => new OpenLibraryProvider(ctx) },
 	{ id: "anilist", create: (ctx) => new AniListProvider(ctx) },
+	{ id: "rawg", create: (ctx) => new RawgProvider(ctx) },
 	{ id: "weblink", create: (ctx) => new WebLinkProvider(ctx) },
 ];
 
@@ -133,6 +136,10 @@ export default class ScoutPlugin extends Plugin {
 		this.registerView(
 			LIBRARY_VIEW_TYPE,
 			(leaf) => new ScoutLibraryView(leaf, this.context),
+		);
+		this.registerView(
+			STATS_VIEW_TYPE,
+			(leaf) => new ScoutStatsView(leaf, this.context),
 		);
 
 		this.addSettingTab(new ScoutSettingTab(this.app, this, this.context));

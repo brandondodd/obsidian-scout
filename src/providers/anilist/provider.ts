@@ -1,5 +1,8 @@
+import { fromAniList, type AniListListEntry } from "../../core/import/anilist";
+import type { ImportRecord } from "../../core/import/types";
 import type {
 	Discoverable,
+	ListSource,
 	DiscoverQuery,
 	Enrichable,
 	MediaProvider,
@@ -131,6 +134,37 @@ query ($type: MediaType, $genres: [String], $tags: [String], $score: Int, $year:
     ) { ...MediaFields }
   }
 }${MEDIA_FIELDS}`;
+
+/**
+ * A public profile's lists, one media type at a time.
+ *
+ * `score(format: POINT_100)` so that whatever scoring system the user picked
+ * on AniList — stars, smileys, out of ten — arrives as one number to scale.
+ */
+const LIST_QUERY = `
+query ($user: String, $type: MediaType) {
+  MediaListCollection(userName: $user, type: $type) {
+    lists {
+      entries {
+        status
+        score(format: POINT_100)
+        progress
+        repeat
+        notes
+        createdAt
+        startedAt { year month day }
+        completedAt { year month day }
+        media { ...MediaFields }
+      }
+    }
+  }
+}${MEDIA_FIELDS}`;
+
+interface AniListCollection {
+	MediaListCollection?: {
+		lists?: { entries?: (AniListListEntry & { media?: AniListMedia | null })[] }[];
+	} | null;
+}
 
 interface AniListMedia {
 	id: number;
@@ -324,7 +358,8 @@ export class AniListProvider
 		Resolvable,
 		Recommendable,
 		Discoverable,
-		Enrichable
+		Enrichable,
+		ListSource
 {
 	readonly id = "anilist";
 	readonly name = "AniList (anime & manga)";
@@ -512,6 +547,40 @@ export class AniListProvider
 		return (response.data?.Page?.media ?? []).map((m) =>
 			this.applyTitlePreference(toItem(m), m),
 		);
+	}
+
+	/**
+	 * Everything on a public profile, anime then manga.
+	 *
+	 * A title on two custom lists appears twice in the collection, so entries
+	 * are kept once per media id.
+	 */
+	async userList(username: string, ctx: RequestContext): Promise<ImportRecord[]> {
+		const user = username.trim();
+		if (!user) return [];
+		const rows: { item: MediaItem; entry: AniListListEntry }[] = [];
+		const seen = new Set<number>();
+
+		for (const type of ["ANIME", "MANGA"] as const) {
+			const response = await this.ctx.http.postJson<
+				GraphQLResponse<AniListCollection>
+			>(
+				ENDPOINT,
+				{ query: LIST_QUERY, variables: { user, type } },
+				{ signal: ctx.signal, cacheTtlMs: 5 * 60 * 1000 },
+			);
+			if (response.errors?.length) {
+				throw new Error(response.errors[0]?.message ?? "AniList query failed");
+			}
+			for (const list of response.data?.MediaListCollection?.lists ?? []) {
+				for (const { media, ...entry } of list.entries ?? []) {
+					if (!media || seen.has(media.id)) continue;
+					seen.add(media.id);
+					rows.push({ item: this.applyTitlePreference(toItem(media), media), entry });
+				}
+			}
+		}
+		return fromAniList(rows);
 	}
 
 	canResolve(url: string): boolean {

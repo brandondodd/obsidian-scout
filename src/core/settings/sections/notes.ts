@@ -1,57 +1,120 @@
-import { Setting } from "obsidian";
-import { MEDIA_KIND_LABELS } from "../../types";
-import { addPathSetting } from "../controls";
+import { Setting, SettingGroup } from "obsidian";
+import type { CollisionPolicy } from "../../noteWriter";
+import { MEDIA_KIND_LABELS, type MediaKind } from "../../types";
+import { dropdown, manage, path, toggle } from "../controls";
+import type { ResultAction } from "../store";
+import { openSubpage } from "../subpage";
 import { enabledSourceKinds } from "./kinds";
-import type { SettingsSection } from "./types";
+import { renderPlaceholders } from "./templates";
+import type { SectionContext, SettingsSection } from "./types";
 
-/**
- * Template and output folder per media kind.
- *
- * Keyed by kind rather than by provider, so adding a second book source reuses
- * the book configuration instead of introducing a parallel set of settings.
- */
-export const notesSection: SettingsSection = {
-	id: "notes",
-	label: "Notes",
-	icon: "file-text",
-	intro: "Where each kind of note is created, and which template it uses. Templates are optional — every kind has a built-in one.",
+/** How a note gets made, and where each kind of note goes. */
+export const notesSection: SettingsSection = (container, ctx) => {
+	const { settings, app } = ctx;
 
-	render(container, ctx) {
-		const { app, settings } = ctx;
-		const kinds = enabledSourceKinds(ctx);
+	new SettingGroup(container)
+		.setHeading("Creating notes")
+		.addSetting(
+			dropdown<ResultAction>({
+				name: "Clicking a search result",
+				desc: "The + button on each result always creates the note directly.",
+				value: settings.core("resultAction"),
+				options: { detail: "Show details", create: "Create the note" },
+				onChange: (v) => settings.setCore("resultAction", v),
+			}),
+		)
+		.addSetting(
+			dropdown<CollisionPolicy>({
+				name: "When a note already exists",
+				desc: "A note with the same name is already in the folder.",
+				value: settings.core("collisionPolicy"),
+				options: {
+					prompt: "Ask me",
+					open: "Open the existing note",
+					increment: "Create a numbered copy",
+					overwrite: "Overwrite it",
+				},
+				onChange: (v) => settings.setCore("collisionPolicy", v),
+			}),
+		)
+		.addSetting(
+			toggle({
+				name: "Open note after creating",
+				value: settings.core("openAfterCreate"),
+				onChange: (v) => settings.setCore("openAfterCreate", v),
+			}),
+		)
+		.addSetting(
+			toggle({
+				name: "Warn about unknown template fields",
+				desc: "Show a notice when a template uses a placeholder the source does not provide.",
+				value: settings.core("warnOnMissingFields"),
+				onChange: (v) => settings.setCore("warnOnMissingFields", v),
+			}),
+		);
 
-		if (kinds.length === 0) {
-			container.createEl("p", {
-				text: "Enable a source first — the kinds it offers appear here.",
-				cls: "scout-tab-intro",
-			});
-			return;
-		}
+	const locations = new SettingGroup(container).setHeading("Folders and templates");
+	const kinds = enabledSourceKinds(ctx);
+	if (kinds.length === 0) {
+		locations.addSetting((s) =>
+			s.setName("No media types yet").setDesc("Turn on a source and the media types it offers appear here."),
+		);
+	}
+	for (const kind of kinds) {
+		locations.addSetting(
+			manage({
+				name: MEDIA_KIND_LABELS[kind],
+				desc: describeLocation(ctx, kind),
+				buttonText: "Edit",
+				onClick: () => openLocation(ctx, kind),
+			}),
+		);
+	}
+	locations.addSetting(
+		manage({
+			name: "Template placeholders",
+			desc: "Fields, filters, and blocks you can use in a template file.",
+			buttonText: "View",
+			onClick: () =>
+				openSubpage(app, {
+					title: "Template placeholders",
+					intro: "Frontmatter is rendered as valid YAML — values are quoted and escaped for you.",
+					render: (el) => renderPlaceholders(el, ctx.registry),
+				}),
+		}),
+	);
+};
 
-		for (const kind of kinds) {
-			const label = MEDIA_KIND_LABELS[kind];
+function describeLocation({ settings }: SectionContext, kind: MediaKind): string {
+	const { outputFolder, templatePath } = settings.kind(kind);
+	return `${outputFolder || "Vault root"} · ${templatePath || "Built-in template"}`;
+}
+
+function openLocation(ctx: SectionContext, kind: MediaKind): void {
+	const { app, settings, rerender } = ctx;
+	const label = MEDIA_KIND_LABELS[kind];
+	openSubpage(app, {
+		title: label,
+		render: (el) => {
 			const config = settings.kind(kind);
-
-			new Setting(container).setName(label).setHeading();
-
-			addPathSetting(app, container, {
+			path(app, {
 				name: "Folder",
-				desc: `Where ${label.toLowerCase()} notes are created.`,
-				placeholder: "e.g. Media/Movies",
+				desc: `Where new ${label.toLowerCase()} notes are created.`,
+				placeholder: `Media/${label}`,
 				value: config.outputFolder,
 				type: "folder",
-				onChange: (v) => settings.setKind(kind, "outputFolder", v),
-			});
-
-			addPathSetting(app, container, {
+				onChange: (v) => settings.setKind(kind, "outputFolder", v.trim()),
+			})(new Setting(el));
+			path(app, {
 				name: "Template",
 				desc: "Leave empty to use the built-in template.",
-				placeholder: "e.g. Templates/Movie.md",
+				placeholder: `Templates/${label}.md`,
 				value: config.templatePath,
 				type: "file",
 				extensions: ["md"],
-				onChange: (v) => settings.setKind(kind, "templatePath", v),
-			});
-		}
-	},
-};
+				onChange: (v) => settings.setKind(kind, "templatePath", v.trim()),
+			})(new Setting(el));
+		},
+		onClose: rerender,
+	});
+}

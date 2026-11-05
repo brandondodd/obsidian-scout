@@ -528,6 +528,15 @@ export interface LibraryConfig {
 	confirmDelete: boolean;
 
 	customFields: CustomField[];
+
+	/**
+	 * How many of each kind you mean to finish in a year — "52 books".
+	 *
+	 * Kinds absent here have no goal. One number per kind and not per year:
+	 * a goal is a habit you are keeping, and last year's figure stays readable
+	 * against it on the stats page.
+	 */
+	goals: Partial<Record<MediaKind, number>>;
 }
 
 function perKind(source: Record<MediaKind, string>): Record<MediaKind, string> {
@@ -563,8 +572,7 @@ export function defaultLibraryConfig(): LibraryConfig {
 		ratingIcon: "star",
 
 		thoughtsHeading: "Thoughts",
-		progressTotalFields:
-			"number_of_episodes, episodes, pages, chapters, volumes",
+		progressTotalFields: DEFAULT_PROGRESS_TOTALS,
 
 		layout: "grid",
 		cardSize: 150,
@@ -579,8 +587,20 @@ export function defaultLibraryConfig(): LibraryConfig {
 		confirmDelete: true,
 
 		customFields: [],
+		goals: {},
 	};
 }
+
+/**
+ * Properties a progress bar reads its total from. A game's progress is hours
+ * played, so its total is `playtime` — the hours an average player puts in.
+ */
+const DEFAULT_PROGRESS_TOTALS =
+	"number_of_episodes, episodes, pages, chapters, volumes, playtime";
+
+/** The default before games had a source, upgraded when left untouched. */
+const PREVIOUS_PROGRESS_TOTALS =
+	"number_of_episodes, episodes, pages, chapters, volumes";
 
 /** Fills in anything a stored config predates, without discarding user values. */
 export function normalizeLibraryConfig(
@@ -596,6 +616,12 @@ export function normalizeLibraryConfig(
 		statuses: { ...base.statuses, ...stored.statuses },
 		ratingScale: validScale(stored.ratingScale) ?? base.ratingScale,
 		ratingScales: cleanScales(stored.ratingScales),
+		goals: cleanGoals(stored.goals),
+		progressTotalFields:
+			stored.progressTotalFields === undefined ||
+			stored.progressTotalFields === PREVIOUS_PROGRESS_TOTALS
+				? DEFAULT_PROGRESS_TOTALS
+				: stored.progressTotalFields,
 		// Clamped where the other numbers are not, because this one is passed
 		// through to a catalogue as a filter: a hand-edited 50 asks every source
 		// for nothing at all and reads as the row being broken.
@@ -621,6 +647,20 @@ function cleanScales(
 	for (const kind of ALL_MEDIA_KINDS) {
 		const scale = validScale(stored[kind]);
 		if (scale !== undefined) out[kind] = scale;
+	}
+	return out;
+}
+
+/** Whole, positive goals for kinds that exist. */
+export function cleanGoals(
+	stored: Partial<Record<MediaKind, number>> | undefined,
+): Partial<Record<MediaKind, number>> {
+	const out: Partial<Record<MediaKind, number>> = {};
+	for (const kind of ALL_MEDIA_KINDS) {
+		const value = stored?.[kind];
+		if (typeof value === "number" && Number.isFinite(value) && value >= 1) {
+			out[kind] = Math.round(value);
+		}
 	}
 	return out;
 }

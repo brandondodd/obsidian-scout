@@ -132,6 +132,48 @@ created: {{now}}
 - [Source page]({{url}})
 `;
 
+const GAME = `---
+title: {{title}}
+type: game
+status: To play
+rating:
+source_rating: {{rating}}
+genres: {{tags}}
+{{#if developers}}developer: {{developers}}
+{{/if}}{{#if publishers}}publisher: {{publishers}}
+{{/if}}{{#if platforms}}platforms: {{platforms}}
+{{/if}}release_date: {{release_date}}
+{{#if playtime}}playtime: {{playtime}}
+{{/if}}progress:
+cover: {{cover}}
+source: {{provider}}
+scout_id: {{id}}
+created: {{now}}
+---
+
+## Overview
+
+{{description}}
+
+## Information
+
+**Rating:** {{rating}}/10
+**Genres:** {{tags|list}}
+{{#if developers}}**Developer:** {{developers|list}}
+{{/if}}{{#if platforms}}**Platforms:** {{platforms|list}}
+{{/if}}**Released:** {{release_date|date:MMMM DD, YYYY}}
+{{#if playtime}}**Average playtime:** {{playtime}} hours
+{{/if}}
+
+## Thoughts
+
+
+
+## Resources
+
+- [RAWG page]({{url}})
+`;
+
 const LINK = `---
 title: {{title}}
 type: link
@@ -185,6 +227,7 @@ const BY_KIND: Partial<Record<MediaKind, string>> = {
 	movie: MOVIE,
 	tv: TV,
 	book: BOOK,
+	game: GAME,
 	link: LINK,
 };
 

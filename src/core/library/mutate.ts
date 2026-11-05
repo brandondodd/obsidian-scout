@@ -62,13 +62,20 @@ export function today(): string {
 
 const lower = (value: string) => value.toLowerCase();
 
+/**
+ * The two things a write needs to know about a note: where it is, and what to
+ * call it if something goes wrong. A note just created is not in the index
+ * yet, so writes cannot insist on a whole entry.
+ */
+export type NoteRef = Pick<LibraryEntry, "path" | "title">;
+
 export class LibraryMutator {
 	constructor(
 		private readonly app: App,
 		private readonly settings: ScoutSettings,
 	) {}
 
-	file(entry: LibraryEntry): TFile | null {
+	file(entry: NoteRef): TFile | null {
 		const file = this.app.vault.getAbstractFileByPath(entry.path);
 		return file instanceof TFile ? file : null;
 	}
@@ -258,7 +265,7 @@ export class LibraryMutator {
 	}
 
 	/** Replaces the thoughts section, creating it if the note has none. */
-	async writeThoughts(entry: LibraryEntry, text: string): Promise<void> {
+	async writeThoughts(entry: NoteRef, text: string): Promise<void> {
 		const file = this.file(entry);
 		if (!file) return;
 		const heading = this.settings.library().thoughtsHeading;
@@ -315,7 +322,7 @@ export class LibraryMutator {
 	}
 
 	async patch(
-		entry: LibraryEntry,
+		entry: NoteRef,
 		values: Record<string, unknown>,
 		quiet = false,
 	): Promise<boolean> {

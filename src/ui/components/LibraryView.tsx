@@ -52,6 +52,8 @@ import {
 import { addToCollection } from "../collections";
 import { promptModal } from "../confirm";
 import { ScoutDetailModal } from "../detailModal";
+import { ScoutImportModal } from "../importModal";
+import type { LibraryFocus } from "../libraryView";
 import { ScoutOrganiseModal } from "../organiseModal";
 import { ScoutSearchModal } from "../searchModal";
 import MediaCard from "./Card";
@@ -98,10 +100,13 @@ const PAGE = 120;
 
 export interface LibraryViewProps {
 	ctx: ScoutContext;
+	/** A narrowing asked for from elsewhere; a new nonce applies it again. */
+	focus?: { query: LibraryFocus; nonce: number } | null;
 }
 
 export default function LibraryView({
 	ctx,
+	focus,
 }: LibraryViewProps): React.ReactElement {
 	/**
 	 * The config object is edited in place, so its identity says nothing about
@@ -175,6 +180,19 @@ export default function LibraryView({
 				: emptyQuery(config),
 		);
 	};
+
+	// Opened from elsewhere with a question — a genre, a person — to answer
+	// against the whole library rather than whatever tab was last open.
+	const focusNonce = focus?.nonce;
+	useEffect(() => {
+		if (!focus) return;
+		const { text: words, ...narrowing } = focus.query;
+		setActiveId(null);
+		setPage("library");
+		setText(words ?? "");
+		setQuery({ ...emptyQuery(config), ...narrowing });
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [focusNonce]);
 
 	/**
 	 * Re-ordering a view in the organise dialog moves the library underneath it.
@@ -1238,12 +1256,17 @@ function EmptyLibrary({ ctx }: { ctx: ScoutContext }): React.ReactElement {
 				Using different property names? Map them under{" "}
 				<strong>Settings → Scout → Library</strong>.
 			</p>
-			<button
-				className="mod-cta"
-				onClick={() => new ScoutSearchModal(ctx).open()}
-			>
-				<Icon name="search" /> Find something to add
-			</button>
+			<div className="scout-empty-actions">
+				<button
+					className="mod-cta"
+					onClick={() => new ScoutSearchModal(ctx).open()}
+				>
+					<Icon name="search" /> Find something to add
+				</button>
+				<button onClick={() => new ScoutImportModal(ctx).open()}>
+					<Icon name="import" /> Import from Letterboxd, Goodreads…
+				</button>
+			</div>
 		</div>
 	);
 }

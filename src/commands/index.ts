@@ -4,10 +4,12 @@ import { isResolvable } from "../core/provider";
 import { ALL_MEDIA_KINDS, MEDIA_KIND_LABELS } from "../core/types";
 import { ScoutDetailModal } from "../ui/detailModal";
 import { openHome } from "../ui/homeView";
+import { ScoutImportModal } from "../ui/importModal";
 import { openLibrary } from "../ui/libraryView";
 import { findMissingSourceIds } from "../ui/linkNotes";
 import { refreshLibrary } from "../ui/refreshNotes";
 import { ScoutSearchModal } from "../ui/searchModal";
+import { openStats } from "../ui/statsView";
 
 /**
  * Command registration.
@@ -37,14 +39,27 @@ export function registerCommands(plugin: Plugin, ctx: ScoutContext): void {
 		callback: () => void openLibrary(plugin.app),
 	});
 
+	plugin.addCommand({
+		id: "open-stats",
+		name: "Open stats",
+		callback: () => void openStats(plugin.app),
+	});
+
+	plugin.addCommand({
+		id: "import-library",
+		name: "Import library…",
+		callback: () => new ScoutImportModal(ctx).open(),
+	});
+
 	for (const kind of ALL_MEDIA_KINDS) {
 		plugin.addCommand({
 			id: `search-${kind}`,
 			name: `Search ${MEDIA_KIND_LABELS[kind].toLowerCase()}s`,
 			checkCallback: (checking) => {
-				// Hidden from the palette unless a source actually offers this kind.
+				// Hidden from the palette unless a source actually offers this kind
+				// and has what it needs to answer — a key, for the ones that take one.
 				const available = registry
-					.all()
+					.configured()
 					.some(
 						(p) =>
 							settings.isProviderEnabled(p.id) &&
