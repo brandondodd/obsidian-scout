@@ -246,13 +246,11 @@ export class TmdbProvider
 	settingsSchema(): readonly SettingDescriptor[] {
 		return [
 			{
-				type: "text",
-				key: "accessToken",
+				type: "secret",
+				key: "accessTokenSecret",
+				legacyKey: "accessToken",
 				name: "API read access token",
-				desc: "From your TMDB account under Settings → API. Stored in plain text in this vault's plugin data.",
-				default: "",
-				placeholder: "eyJhbGciOi…",
-				secret: true,
+				desc: "From your TMDB account under Settings → API. Kept in Obsidian's secret storage.",
 			},
 			{
 				type: "toggle",
@@ -645,7 +643,12 @@ export class TmdbProvider
 	}
 
 	private token(): string {
-		return this.ctx.settings.get("accessToken", "").trim();
+		// The plain token an older build stored stays as a fallback, so a device
+		// without secret storage (or before it has copied the secret) still works.
+		return (
+			this.ctx.settings.secret("accessTokenSecret").trim() ||
+			this.ctx.settings.get("accessToken", "").trim()
+		);
 	}
 
 	private headers(): Record<string, string> {

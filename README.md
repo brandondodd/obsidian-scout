@@ -18,7 +18,7 @@ Search a title (or paste a link), pick a result, and Scout renders it through yo
 1. Enable the plugin in **Settings → Community plugins**.
 2. Open **Settings → Scout**.
 3. Under **Notes**, set an output folder for each kind you want to use.
-4. Under **Sources**, paste your TMDB token if you want movies and TV.
+4. Under **Sources**, pick or create a secret holding your TMDB token if you want movies and TV.
 
 Templates are optional — each kind has a built-in one.
 
@@ -53,7 +53,6 @@ Ratings work the same way. Scout never rewrites a number in your notes — chang
 - **Search movies / TV shows / books / anime / …** — per-kind, hidden when no source offers that kind
 - **Manage this note** — the detail view for the note you are looking at
 - **Create note from link in clipboard** — resolves a TMDB, Open Library, AniList, or arbitrary URL
-- **Reload plugin** — development helper
 
 ## Templates
 
@@ -116,13 +115,36 @@ pnpm test
 pnpm run build
 ```
 
-`dev` and `build` both write `main.js` to the plugin root, so the plugin in this vault picks up changes directly. `build` also mirrors the release artifacts into `dist/`.
+`dev` and `build` both write `main.js` to the repo root. `build` also mirrors the release artifacts into `dist/` (gitignored — attach them to a GitHub release).
 
-Obsidian does not reload a plugin when its `main.js` changes on disk. Install [hot-reload](https://github.com/pjeby/hot-reload) and enable it, then `pnpm run dev` is enough: esbuild rewrites `main.js`, hot-reload notices and re-enables the plugin within a second. It only watches plugin folders containing a `.git` directory or a `.hotreload` file — this repo has both.
+### Live reload
+
+1. Install and enable [hot-reload](https://github.com/pjeby/hot-reload) in your test vault.
+2. Run `pnpm run dev`. esbuild rebuilds `main.js` on every source change, and hot-reload re-enables the plugin within a second. It also picks up `styles.css` edits.
+
+If this clone is the plugin folder (`<vault>/.obsidian/plugins/scout`), that is all — the repo ships a `.hotreload` marker.
+
+If the clone lives elsewhere, point the watcher at the vault's plugin folder, in the environment or in a gitignored `.env` file:
+
+```bash
+OBSIDIAN_PLUGIN_DIR=/path/to/vault/.obsidian/plugins/scout
+```
+
+The watcher then copies `main.js`, `manifest.json`, and `styles.css` there after each change and creates the `.hotreload` marker.
 
 ## Privacy
 
-Scout only contacts a source when you search or resolve a link — the library is built entirely from notes already in your vault, and never sends anything anywhere. Your TMDB token is stored in this vault's `data.json` in plain text, like all Obsidian plugin settings — treat that file accordingly. No telemetry.
+The library is built entirely from notes already in your vault. Scout contacts a source only:
+
+- when you search, open a result, or resolve a link
+- for **background refresh** (on by default, **Settings → Scout → Background**): re-checks notes that already record a source id, and updates only facts the source owns
+- for **background reading-up** (off by default, same tab): fetches keywords, cast, and crew for linked notes to improve suggestions
+
+Background jobs send only the source ids already in your notes — never note contents, file names, ratings, or thoughts. Reading-up results are kept in `cache.json` in the plugin folder, never in your notes.
+
+Your TMDB token is kept in Obsidian's secret storage. If an older version stored it in `data.json`, it is copied into secret storage and the plain copy is kept as a fallback, so it keeps working on synced devices. Once every device runs this version, you can delete `accessToken` from `data.json`.
+
+No telemetry.
 
 ## License
 

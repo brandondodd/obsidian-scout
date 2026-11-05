@@ -1,7 +1,26 @@
 import { Notice, Setting } from "obsidian";
+import { SUGGESTION_STANDARD } from "../../library/config";
 import { countVerdicts } from "../../library/feedback";
-import { addSlider, addToggle } from "../controls";
+import { addSlider } from "../controls";
 import type { SettingsSection } from "./types";
+
+/**
+ * What the number on the slider means, in the words a person would use.
+ *
+ * A rating out of ten is the one unit everybody already has an intuition for,
+ * so the control is set in source points rather than in five nameless notches
+ * — but the intuition is for *IMDb's* ten, and a catalogue's average sits
+ * higher than people expect. Saying which band the handle is currently in is
+ * the difference between a number and a decision.
+ */
+function standardBand(value: number): string {
+	if (value < 6) return "Anything watchable — the row will turn up oddities.";
+	if (value < 6.6) return "Around average and up. The widest sensible net.";
+	if (value < 7.1) return "A little above average — where the row usually sits.";
+	if (value < 7.6) return "Solidly liked. Mainstream hits and good genre films.";
+	if (value < 8.1) return "Well reviewed only, and ordered by how well.";
+	return "The acclaimed end. Classics, award winners, top-250 territory.";
+}
 
 /**
  * What Scout has learned, and how much it is allowed to go and learn.
@@ -17,77 +36,32 @@ export const suggestionsSection: SettingsSection = {
 	label: "Suggestions",
 	icon: "wand-sparkles",
 	intro:
-		"How the row on the hub decides what to put in front of you, and what it is allowed to find out in order to decide.",
+		"How the row on the home hub picks what to show you. Background reading-up lives under Background.",
 
 	render(container, ctx) {
-		const { settings, enricher, rerender } = ctx;
+		const { settings, rerender } = ctx;
 		const config = settings.library();
 
-		new Setting(container).setName("Reading up on your library").setHeading();
+		new Setting(container).setName("How picky to be").setHeading();
 
 		container.createEl("p", {
 			cls: "scout-tab-intro",
 			text:
-				"A note records a genre list and a director, because that is what you want to read back. It is not enough to recommend on — “Drama, Thriller” is shared by a third of everything ever made. With this on, Scout asks the same sources it already uses what each of your titles is actually about: its keywords, its cast, its crew. Only the ids your notes already carry are sent, the answers are kept in Scout's own data file, and nothing is ever written into your notes.",
+				"The minimum source score out of ten. If too little clears it, the row fills from the best of the rest.",
 		});
 
-		addToggle(container, {
-			name: "Read up in the background",
-			desc: "Starts a while after Obsidian does, and comes round every six hours it stays open.",
-			value: config.enrichSuggestions,
-			onChange: (v) => {
-				settings.setLibrary("enrichSuggestions", v);
-				rerender();
-			},
+		const standard = addSlider(container, {
+			name: "Standard for suggestions",
+			desc: standardBand(config.suggestionStandard),
+			value: config.suggestionStandard,
+			min: SUGGESTION_STANDARD.min,
+			max: SUGGESTION_STANDARD.max,
+			step: SUGGESTION_STANDARD.step,
+			// Reworded in place rather than by re-rendering the tab, which would
+			// tear the slider out from under the pointer mid-drag.
+			onChange: (v) => standard.setDesc(standardBand(v)),
+			onCommit: (v) => settings.setLibrary("suggestionStandard", v),
 		});
-
-		if (config.enrichSuggestions) {
-			addSlider(container, {
-				name: "Titles per run",
-				desc: "One request each. The ceiling on a single run, so a large library spreads over a few days rather than arriving as one burst.",
-				value: config.enrichBudget,
-				min: 5,
-				max: 40,
-				step: 5,
-				onChange: (v) => settings.setLibrary("enrichBudget", v),
-			});
-		}
-
-		const { eligible, known, waiting } = enricher.progress();
-		new Setting(container)
-			.setName("What Scout has read")
-			.setDesc(
-				eligible === 0
-					? "No note records which source it came from yet, so there is nothing to read up on."
-					: waiting === 0
-						? `All ${eligible} linked note(s) have been read up on.`
-						: `${known} of ${eligible} linked note(s) read up on. ${waiting} waiting.`,
-			)
-			.addButton((b) =>
-				b
-					.setButtonText("Read up now")
-					.setDisabled(waiting === 0)
-					.onClick(async () => {
-						const report = await enricher.runDue();
-						new Notice(
-							report
-								? `Read up on ${report.harvested} of ${report.asked}.`
-								: "Already reading up.",
-						);
-						rerender();
-					}),
-			)
-			.addButton((b) =>
-				b
-					.setButtonText("Forget it all")
-					.setWarning()
-					.setDisabled(known === 0)
-					.onClick(() => {
-						settings.clearEnrichment();
-						new Notice("Forgotten. It will be read again in the background.");
-						rerender();
-					}),
-			);
 
 		new Setting(container).setName("What you have told it").setHeading();
 

@@ -33,11 +33,63 @@ function seed(title: string, id: string, strength = 0.8): Seed {
 	};
 }
 
-const plan = (seeds: Seed[], round = 0, over: Partial<RegistryFacts> = {}) =>
+const plan = (
+	seeds: Seed[],
+	round = 0,
+	over: Partial<RegistryFacts> = {},
+	standard?: number,
+) =>
 	planRound(
-		{ profile, seeds, kinds: ["movie"] as MediaKind[], facts: facts(over) },
+		{
+			profile,
+			seeds,
+			kinds: ["movie"] as MediaKind[],
+			facts: facts(over),
+			...(standard === undefined ? {} : { standard }),
+		},
 		round,
 	);
+
+/** The rating floors of every request in a round that carries one. */
+const floors = (requests: ReturnType<typeof plan>) =>
+	requests.flatMap((one) =>
+		one.query?.minRating === undefined ? [] : [one.query.minRating],
+	);
+
+describe("the standard a round is planned to", () => {
+	/**
+	 * The one thing about a person the model cannot learn by watching them, so
+	 * the one thing worth a control. Everything that browses a catalogue moves
+	 * with it; nothing that follows one of your own titles does, because a
+	 * neighbour of something you loved never went through a rating filter.
+	 */
+	it("raises every catalogue floor when you ask for better", () => {
+		const usual = floors(plan([seed("Arrival", "1")], 0, {}, 6.8));
+		const picky = floors(plan([seed("Arrival", "1")], 0, {}, 8));
+
+		expect(usual).not.toHaveLength(0);
+		expect(picky).toHaveLength(usual.length);
+		for (const [at, floor] of picky.entries()) {
+			expect(floor).toBeCloseTo((usual[at] ?? 0) + 1.2, 5);
+		}
+	});
+
+	it("lowers them again when you do not mind what turns up", () => {
+		const relaxed = floors(plan([seed("Arrival", "1")], 0, {}, 5.5));
+		expect(Math.max(...relaxed)).toBeLessThan(6.5);
+	});
+
+	// The punt is spending the one seat that is not about you, so it asks for
+	// more than the rest of the round — wherever the rest of the round is set.
+	it("keeps the punt above the rest of the round", () => {
+		const requests = plan([seed("Arrival", "1")], 0, {}, 7);
+		const punt = requests.find((one) => one.origin.strategy === "wildcard");
+		const explore = requests.find((one) => one.origin.strategy === "explore");
+		expect(punt?.query?.minRating ?? 0).toBeGreaterThan(
+			explore?.query?.minRating ?? 0,
+		);
+	});
+});
 
 describe("planRound", () => {
 	it("asks a source what is like each of your titles", () => {
@@ -316,6 +368,24 @@ describe("the strategies beyond the first two", () => {
 	it("punts at something the library does not already have", () => {
 		const punt = planStudied().find((one) => one.origin.strategy === "wildcard");
 		expect(punt?.query?.genres).not.toContain("Science Fiction");
+	});
+
+	/**
+	 * The row went looking for the genres in its own "steering away from"
+	 * column. `topTraits(…, "liked")` returns only what scores above your
+	 * average, so a genre you had rated 3 twice was not in the list of genres it
+	 * knew about, and "you have little Romance" is not a true sentence about
+	 * somebody who has two of them and did not enjoy either.
+	 */
+	it("does not punt at something you have turned down", () => {
+		// Every round the list has, since the punt walks it one door per press.
+		const genres = [0, 1, 2, 3, 4, 5, 6, 7].map(
+			(round) =>
+				planStudied(round).find((one) => one.origin.strategy === "wildcard")
+					?.query?.genres?.[0],
+		);
+		expect(genres.filter(Boolean).length).toBeGreaterThan(0);
+		expect(genres).not.toContain("Romance");
 	});
 
 	// Otherwise "show me others" asks the identical questions and gets the

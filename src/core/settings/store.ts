@@ -9,20 +9,24 @@ import {
 } from "../library/config";
 import {
 	normalizeFeedback,
-	normalizeShown,
 	pruneShown,
 	type FeedbackLog,
 	type FeedbackRecord,
 	type ShownLog,
 } from "../library/feedback";
-import {
-	normalizeEnrichment,
-	type EnrichmentCache,
-	type EnrichmentRecord,
-} from "../library/enrich";
+import type { EnrichmentCache, EnrichmentRecord } from "../library/enrich";
 import type { CollisionPolicy } from "../noteWriter";
 import { normalizeViews, type SavedView } from "../library/views";
 import type { MediaKind } from "../types";
+import {
+	CacheFile,
+	DebouncedSave,
+	emptyCache,
+	hasLegacyCache,
+	mergeCaches,
+	normalizeCache,
+	type ScoutCache,
+} from "./cacheFile";
 import type { SettingsScope } from "./types";
 
 /**
@@ -36,6 +40,9 @@ import type { SettingsScope } from "./types";
  *              supplied the metadata (so a new provider reuses existing config)
  * - `library`  how notes already in the vault are read, shown, and edited
  * - `providers` one namespace per provider, handed out as a scoped accessor
+ *
+ * Rebuildable working state (refresh log, shown log, enrichment, rotation)
+ * lives in `cache.json` instead — see `cacheFile.ts`.
  */
 
 export const SCHEMA_VERSION = 3;
@@ -66,42 +73,13 @@ export interface ScoutData {
 	library: LibraryConfig;
 	providers: Record<string, Record<string, unknown>>;
 	/**
-	 * When each note was last asked about, `YYYY-MM-DD` by note path.
-	 *
-	 * The one thing Scout keeps outside the notes, and deliberately: most
-	 * checks find nothing changed, and stamping a property on every note every
-	 * few days to record that would put the whole library at the top of
-	 * "recently updated" for no reason anybody asked for. Losing this file
-	 * costs one extra round of checks and nothing else.
-	 */
-	checked: Record<string, string>;
-	/**
 	 * Suggestions you liked or passed on, keyed `providerId:id`.
 	 *
-	 * Outside the vault for the same reason as `checked`: a thumbs-down is a
+	 * Outside the vault deliberately: a thumbs-down is a
 	 * fact about something you decided *not* to keep, and writing a note for
 	 * each one would fill the library with the opposite of a library.
 	 */
 	feedback: FeedbackLog;
-	/**
-	 * When each suggestion was last put in front of you, `providerId:id` to
-	 * epoch milliseconds.
-	 *
-	 * The row used to hold this in memory only, so closing Obsidian and opening
-	 * it again brought back the same seven titles — which reads as "this is not
-	 * learning" more loudly than any ranking error. Losing this file costs one
-	 * repeated row and nothing else.
-	 */
-	shown?: ShownLog;
-	/**
-	 * What the sources have said about your library beyond what its notes hold.
-	 *
-	 * Scout's working notes, and emphatically not yours: keywords, cast and
-	 * crew, kept here precisely so they never end up in your frontmatter.
-	 * Losing this file costs a few days of quiet background reading and nothing
-	 * else.
-	 */
-	enrichment?: EnrichmentCache;
 	/**
 	 * Saved library views, in the order their tabs appear.
 	 *
@@ -144,10 +122,7 @@ function emptyData(): ScoutData {
 		kinds: {},
 		library: normalizeLibraryConfig(undefined),
 		providers: {},
-		checked: {},
 		feedback: {},
-		shown: {},
-		enrichment: {},
 		views: [],
 		collections: [],
 	};
@@ -186,10 +161,7 @@ export function migrate(raw: Record<string, unknown> | null): ScoutData {
 			kinds: data.kinds ?? {},
 			library,
 			providers: data.providers ?? {},
-			checked: data.checked ?? {},
 			feedback: normalizeFeedback(data.feedback),
-			shown: normalizeShown(data.shown),
-			enrichment: normalizeEnrichment(data.enrichment),
 			views: normalizeViews(data.views, library),
 			collections: normalizeCollections(data.collections),
 			...(data.seededViews ? { seededViews: true } : {}),
@@ -233,25 +205,47 @@ export function migrate(raw: Record<string, unknown> | null): ScoutData {
 
 export class ScoutSettings {
 	private data: ScoutData = emptyData();
-	/** Coalesces bursts of writes (e.g. typing in a text field) into one save. */
-	private saveTimer: number | null = null;
+	private cache: ScoutCache = emptyCache();
+	private readonly cacheFile: CacheFile;
+	private readonly saves: DebouncedSave;
+	private readonly cacheSaves: DebouncedSave;
 	private readonly listeners = new Set<() => void>();
 
-	constructor(private readonly plugin: Plugin) {}
+	constructor(private readonly plugin: Plugin) {
+		this.cacheFile = new CacheFile(plugin);
+		this.saves = new DebouncedSave(() => this.plugin.saveData(this.data));
+		this.cacheSaves = new DebouncedSave(() => this.cacheFile.write(this.cache));
+	}
 
 	async load(): Promise<void> {
 		const raw = (await this.plugin.loadData()) as Record<
 			string,
 			unknown
 		> | null;
-		const migrated = migrate(raw);
 		const wasUpgraded =
 			!raw ||
 			typeof raw.schemaVersion !== "number" ||
 			raw.schemaVersion < SCHEMA_VERSION;
-		this.data = migrated;
-		// Persist immediately after an upgrade so the stale flat keys are dropped.
-		if (wasUpgraded) await this.saveNow();
+		// Older builds kept the cache in data.json. It is moved, not dropped.
+		const legacy = hasLegacyCache(raw);
+		this.data = migrate(raw);
+		this.cache = mergeCaches(
+			normalizeCache(await this.cacheFile.read()),
+			normalizeCache(raw),
+		);
+		// One turn of the wheel per load, so each session's suggestion row
+		// starts somewhere new however often the hub is reopened.
+		this.cache.rotation += 1;
+
+		if (legacy) {
+			// Cache first: if the second write fails, nothing has been lost.
+			await this.cacheSaves.now();
+			await this.saves.now();
+		} else {
+			// Persist immediately after an upgrade so stale keys are dropped.
+			if (wasUpgraded) await this.saves.now();
+			this.cacheSaves.schedule();
+		}
 	}
 
 	/**
@@ -268,20 +262,18 @@ export class ScoutSettings {
 		for (const listener of this.listeners) listener();
 	}
 
+	/** Writes settings now, and the cache if it has unsaved changes. */
 	async saveNow(): Promise<void> {
-		if (this.saveTimer !== null) {
-			window.clearTimeout(this.saveTimer);
-			this.saveTimer = null;
-		}
-		await this.plugin.saveData(this.data);
+		await this.saves.now();
+		await this.cacheSaves.flush();
 	}
 
 	private scheduleSave(): void {
-		if (this.saveTimer !== null) window.clearTimeout(this.saveTimer);
-		this.saveTimer = window.setTimeout(() => {
-			this.saveTimer = null;
-			void this.plugin.saveData(this.data);
-		}, 400);
+		this.saves.schedule();
+	}
+
+	private scheduleCacheSave(): void {
+		this.cacheSaves.schedule();
 	}
 
 	core<K extends keyof CoreConfig>(key: K): CoreConfig[K] {
@@ -336,19 +328,19 @@ export class ScoutSettings {
 	/* -------------------------------------------------- the refresh log */
 
 	checkLog(): Readonly<Record<string, string>> {
-		return this.data.checked;
+		return this.cache.checked;
 	}
 
 	/** Records that a note was asked about today, whatever the answer was. */
 	markChecked(path: string, day: string): void {
-		this.data.checked[path] = day;
-		this.scheduleSave();
+		this.cache.checked[path] = day;
+		this.scheduleCacheSave();
 	}
 
 	/** Replaces the log wholesale, for pruning after a run. No notification. */
 	setCheckLog(log: Record<string, string>): void {
-		this.data.checked = log;
-		this.scheduleSave();
+		this.cache.checked = log;
+		this.scheduleCacheSave();
 	}
 
 	/* ------------------------------------------------ suggestion feedback */
@@ -379,8 +371,13 @@ export class ScoutSettings {
 
 	/* --------------------------------------------------------- what was shown */
 
+	/** Which session this is — see `ScoutCache.rotation`. */
+	rotation(): number {
+		return this.cache.rotation;
+	}
+
 	shownLog(): Readonly<ShownLog> {
-		return this.data.shown ?? {};
+		return this.cache.shown;
 	}
 
 	/**
@@ -392,22 +389,22 @@ export class ScoutSettings {
 	 */
 	markShown(keys: readonly string[], now: Date = new Date()): void {
 		if (keys.length === 0) return;
-		const next = { ...(this.data.shown ?? {}) };
+		const next = { ...this.cache.shown };
 		for (const key of keys) next[key] = now.getTime();
-		this.data.shown = pruneShown(next, now);
-		this.scheduleSave();
+		this.cache.shown = pruneShown(next, now);
+		this.scheduleCacheSave();
 	}
 
 	clearShown(): void {
-		this.data.shown = {};
-		this.scheduleSave();
+		this.cache.shown = {};
+		this.scheduleCacheSave();
 		this.notify();
 	}
 
 	/* ------------------------------------------------------------ enrichment */
 
 	enrichment(): Readonly<EnrichmentCache> {
-		return this.data.enrichment ?? {};
+		return this.cache.enrichment;
 	}
 
 	/**
@@ -416,22 +413,22 @@ export class ScoutSettings {
 	 * one run's worth of new facts. The enricher calls `touch` once at the end.
 	 */
 	setEnrichment(key: string, record: EnrichmentRecord | null): void {
-		const next = { ...(this.data.enrichment ?? {}) };
+		const next = { ...this.cache.enrichment };
 		if (record) next[key] = record;
 		else delete next[key];
-		this.data.enrichment = next;
-		this.scheduleSave();
+		this.cache.enrichment = next;
+		this.scheduleCacheSave();
 	}
 
 	/** Replaces the cache wholesale, for pruning after a run. No notification. */
 	setEnrichmentAll(cache: EnrichmentCache): void {
-		this.data.enrichment = cache;
-		this.scheduleSave();
+		this.cache.enrichment = cache;
+		this.scheduleCacheSave();
 	}
 
 	clearEnrichment(): void {
-		this.data.enrichment = {};
-		this.scheduleSave();
+		this.cache.enrichment = {};
+		this.scheduleCacheSave();
 		this.notify();
 	}
 
@@ -556,10 +553,16 @@ export class ScoutSettings {
 			},
 			set: async (key: string, value: unknown): Promise<void> => {
 				const bucket = this.data.providers[providerId] ?? {};
-				bucket[key] = value;
+				if (value === undefined) delete bucket[key];
+				else bucket[key] = value;
 				this.data.providers[providerId] = bucket;
 				await this.saveNow();
 				this.notify();
+			},
+			secret: (key: string): string => {
+				const name = this.data.providers[providerId]?.[key];
+				if (typeof name !== "string" || !name) return "";
+				return this.plugin.app.secretStorage?.getSecret(name) ?? "";
 			},
 		};
 	}

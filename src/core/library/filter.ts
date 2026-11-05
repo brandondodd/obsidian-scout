@@ -224,6 +224,17 @@ export function sortEntries(
 	// Your own verdict outranks a borrowed one when the two land on the same
 	// number, so a film you gave 8 sits above a film the internet gave 8.
 	const mine = (entry: LibraryEntry) => (entry.rating !== undefined ? 1 : 0);
+	/**
+	 * And when your own verdicts agree, the world's breaks the tie.
+	 *
+	 * A library sorted by what you thought of it is mostly ties — everything you
+	 * liked is an 8 — and under them the order fell through to the alphabet,
+	 * which is not an opinion about anything. `rank` already reaches for the
+	 * source's score, but only for entries you never scored yourself, so between
+	 * two of your own 8s it had nothing left to say.
+	 */
+	const theirs = (entry: LibraryEntry, missing: number) =>
+		sourceFraction(entry) ?? missing;
 
 	/**
 	 * Keys are worked out inside the comparator rather than cached against each
@@ -248,13 +259,19 @@ export function sortEntries(
 		case "rating-desc":
 			out.sort(
 				(a, b) =>
-					rank(b, -1) - rank(a, -1) || mine(b) - mine(a) || byTitle(a, b),
+					rank(b, -1) - rank(a, -1) ||
+					mine(b) - mine(a) ||
+					theirs(b, -1) - theirs(a, -1) ||
+					byTitle(a, b),
 			);
 			break;
 		case "rating-asc":
 			out.sort(
 				(a, b) =>
-					rank(a, 2) - rank(b, 2) || mine(b) - mine(a) || byTitle(a, b),
+					rank(a, 2) - rank(b, 2) ||
+					mine(b) - mine(a) ||
+					theirs(a, 2) - theirs(b, 2) ||
+					byTitle(a, b),
 			);
 			break;
 		case "year-desc":

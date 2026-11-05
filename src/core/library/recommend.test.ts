@@ -22,6 +22,7 @@ import {
 	recommendationSeeds,
 	scoreSuggestion,
 	seedStrength,
+	subjectSeats,
 	tasteGenres,
 	type StrategyId,
 	type SuggestionPool,
@@ -35,10 +36,19 @@ const taste = (entries: LibraryEntry[], feedback: FeedbackLog = {}) =>
 	buildTaste(config, entries, NOW, feedback);
 
 describe("seedStrength", () => {
-	it("passes over something you never finished and never rated", () => {
+	// Putting something on the shelf is a choice you made about it. It used to
+	// count for nothing at all, which threw away most of the library the row had
+	// to draw on — and a row can only answer about what it can ask about.
+	it("asks about something you added but have not started", () => {
 		expect(
 			seedStrength(config, entry({ status: "To watch", ref }), NOW),
-		).toBeNull();
+		).not.toBeNull();
+	});
+
+	it("asks about it below anything you actually watched", () => {
+		const planned = seedStrength(config, entry({ status: "To watch", ref }), NOW);
+		const finished = seedStrength(config, entry({ status: "Watched", ref }), NOW);
+		expect(planned ?? 0).toBeLessThan(finished ?? 0);
 	});
 
 	it("passes over something you gave up on", () => {
@@ -171,6 +181,33 @@ describe("discoverPlans", () => {
 		const plans = discoverPlans(taste([]), 0, ["movie"]);
 		expect(plans).toHaveLength(1);
 		expect(plans[0]?.genres).toEqual([]);
+	});
+
+	/**
+	 * The discovery half is the part of the row that reaches past the library.
+	 * Asking about the same top three genres every round had it reaching into
+	 * the same corner of it, and the genres below those were never asked about
+	 * at all — the catalogues take three.
+	 */
+	it("asks about a different few of your genres each round", () => {
+		// One big habit and several smaller ones, all of them enjoyed — which is
+		// what a real library looks like and what the old early return could not
+		// describe.
+		const broad = taste([
+			...Array.from({ length: 6 }, () =>
+				entry({ kind: "movie", tags: ["Horror"], rating: 9, status: "Watched" }),
+			),
+			...["Comedy", "Drama", "Western", "Musical", "History"].flatMap((genre) => [
+				entry({ kind: "movie", tags: [genre], rating: 8, status: "Watched" }),
+				entry({ kind: "movie", tags: [genre], rating: 8, status: "Watched" }),
+			]),
+		]);
+		const first = discoverPlans(broad, 0, ["movie"])[0]?.genres ?? [];
+		const next = discoverPlans(broad, 1, ["movie"])[0]?.genres ?? [];
+
+		expect(first).toHaveLength(3);
+		expect(next).toHaveLength(3);
+		expect(next.some((one) => !first.includes(one))).toBe(true);
 	});
 });
 
@@ -404,6 +441,44 @@ describe("fillSlots", () => {
 	});
 
 	/**
+	 * The complaint the cap exists for. Someone who mostly watches horror has a
+	 * pool that is mostly horror, scored higher than everything else in it by
+	 * every term the model has, and the diversity charge is what a runaway
+	 * favourite is best able to pay — so the row came out seven horror films.
+	 * Most of it is still allowed to be horror. All of it is not.
+	 */
+	it("does not let one genre take the whole row", () => {
+		const pool = [
+			...Array.from({ length: 10 }, (_, at) =>
+				one(`horror${at}`, "exploit", 5 - at * 0.01, ["Horror", "Thriller"]),
+			),
+			...Array.from({ length: 4 }, (_, at) =>
+				one(`other${at}`, "exploit", 0.2, [`G${at}`]),
+			),
+		];
+		const row = fillSlots(pool, 7, { subjectSeats: subjectSeats(7) });
+		const horror = row.filter((at) => at.tags.includes("Horror"));
+		expect(horror).toHaveLength(4);
+		expect(row).toHaveLength(7);
+	});
+
+	/** A row short of a card is worse than a row leaning on one genre. */
+	it("lifts the cap rather than leave the row short", () => {
+		const pool = Array.from({ length: 9 }, (_, at) =>
+			one(`horror${at}`, "exploit", 5 - at, ["Horror"]),
+		);
+		expect(fillSlots(pool, 7, { subjectSeats: subjectSeats(7) })).toHaveLength(7);
+	});
+
+	/** Untagged candidates are not a subject, so they are not capped by one. */
+	it("does not cap what it knows nothing about", () => {
+		const pool = Array.from({ length: 9 }, (_, at) =>
+			one(`x${at}`, "exploit", 5 - at),
+		);
+		expect(fillSlots(pool, 7, { subjectSeats: 2 })).toHaveLength(7);
+	});
+
+	/**
 	 * A library four-fifths film got a row entirely of film, however many books
 	 * and shows came back — the other kinds were always the eighth-best thing on
 	 * it. The subject penalty could not fix this, because two films sharing
@@ -417,6 +492,42 @@ describe("fillSlots", () => {
 			{ ...one("book", "exploit", 0.6, ["Fantasy"]), family: "book" },
 		];
 		expect(fillSlots(pool, 3).map((at) => at.id)).toContain("book");
+	});
+
+	/**
+	 * The mix follows the library, and the library gets a say in what "mixed"
+	 * means. Even thirds is as wrong for a shelf that is nine-tenths film as all
+	 * film is: the first is not what they read, the second is not a mix.
+	 */
+	it("seats each sort about as often as you go for it", () => {
+		const pool = [
+			...Array.from({ length: 8 }, (_, at) => ({
+				...one(`film${at}`, "exploit", 1 - at * 0.01, [`G${at}`]),
+				family: "movie",
+			})),
+			...Array.from({ length: 3 }, (_, at) => ({
+				...one(`book${at}`, "exploit", 0.5 - at * 0.01, [`B${at}`]),
+				family: "book",
+			})),
+		];
+		const shares: Record<string, number> = { movie: 0.7, book: 0.3 };
+		const seats = fillSlots(pool, 7, {
+			share: (family) => shares[family] ?? 0,
+		}).map((at) => at.family);
+		expect(seats.filter((one) => one === "movie")).toHaveLength(5);
+		expect(seats.filter((one) => one === "book")).toHaveLength(2);
+	});
+
+	/** And a kind with nothing to say does not hold a seat open. */
+	it("gives the seats back when the other sorts have nothing", () => {
+		const pool = Array.from({ length: 8 }, (_, at) => ({
+			...one(`film${at}`, "exploit", 1 - at * 0.01, [`G${at}`]),
+			family: "movie",
+		}));
+		const seats = fillSlots(pool, 7, {
+			share: (family) => (family === "movie" ? 0.7 : 0.3),
+		});
+		expect(seats).toHaveLength(7);
 	});
 
 	// Gentle, not a quota: a clearly better film still beats a mediocre book.
@@ -475,13 +586,38 @@ describe("fillSlots", () => {
 				...one(`old${at}`, "exploit" as StrategyId, 9 - at, [`G${at}`]),
 				group: "old" as string | undefined,
 			})),
-			{ ...one("new", "exploit", 0.1, ["Z"]), group: undefined },
+			...Array.from({ length: 3 }, (_, at) => ({
+				...one(`new${at}`, "exploit" as StrategyId, 0.1, [`Z${at}`]),
+				group: undefined as string | undefined,
+			})),
 		];
 		const row = fillSlots(pool, 4, {
 			quota: { of: (at) => at.group, max: 2 },
 		});
 		expect(row.filter((at) => at.group === "old")).toHaveLength(2);
-		expect(row.map((at) => at.id)).toContain("new");
+		expect(row.map((at) => at.id)).toContain("new0");
+	});
+
+	/**
+	 * And stands down rather than leave the row short.
+	 *
+	 * Every other rule here gives up its seat before the row goes ragged, and
+	 * this one did not — which mattered far past the look of it: a short row is
+	 * what makes "show me others" come round to what you have already seen, so a
+	 * pool that was mostly things you had thumbed up sent the press round in
+	 * circles rather than seating a third of them.
+	 */
+	it("gives the group its cap back rather than leave a seat empty", () => {
+		const pool = Array.from({ length: 4 }, (_, at) => ({
+			...one(`old${at}`, "exploit" as StrategyId, 9 - at, [`G${at}`]),
+			group: "old" as string | undefined,
+		}));
+		const row = fillSlots(pool, 4, {
+			quota: { of: (at) => at.group, max: 2 },
+		});
+		expect(row).toHaveLength(4);
+		// In order, so the two it would have seated anyway are still the two best.
+		expect(row.map((at) => at.id)).toEqual(["old0", "old1", "old2", "old3"]);
 	});
 });
 
@@ -495,6 +631,161 @@ describe("rankSuggestions", () => {
 		feedback: {} as FeedbackLog,
 		now: NOW,
 	};
+
+	/**
+	 * The one axis the model cannot learn by watching you, so the one worth a
+	 * control. A 6.2 is a reasonable suggestion for somebody who likes turning
+	 * up oddities and an insult to somebody who asked for the acclaimed end, and
+	 * neither of them rates their own library any differently.
+	 */
+	describe("the standard you asked for", () => {
+		const middling = item({
+			title: "Watchable",
+			tags: ["Drama"],
+			rating: 6.2,
+			ratingCount: 5000,
+		});
+
+		const acclaimed = (n: number) =>
+			Array.from({ length: n }, (_, at) =>
+				item({
+					title: `Great ${at}`,
+					tags: [`G${at}`],
+					rating: 8.4,
+					ratingCount: 50_000,
+				}),
+			);
+
+		it("shows a middling film to somebody who does not mind", () => {
+			const shown = rankSuggestions(pool(middling), profile, {
+				...base,
+				standard: 5.5,
+			});
+			expect(shown.map((at) => at.item.title)).toContain("Watchable");
+		});
+
+		/**
+		 * The complaint this setting was fixed for. It was first written as an
+		 * offset on `merit` — points above the average thing a catalogue carries
+		 * — and the translation carried over a point of slack, so a row set to
+		 * 7.5 served 6.3s and the setting was a promise the row did not keep. It
+		 * is read against the source's own score out of ten now, which is the
+		 * number on the slider.
+		 */
+		it("means the number on the slider", () => {
+			const shown = rankSuggestions(pool(middling, ...acclaimed(8)), profile, {
+				...base,
+				standard: 7.5,
+			});
+			expect(shown.map((at) => at.item.title)).not.toContain("Watchable");
+			for (const at of shown) expect(at.item.rating ?? 0).toBeGreaterThanOrEqual(7.5);
+		});
+
+		/**
+		 * And a high fit no longer buys a way past it. The bypass meant the
+		 * suggestions best placed to ignore the standard were the ones the row
+		 * was most enthusiastic about — which are exactly the ones filling it.
+		 */
+		it("is not talked out of it by a suggestion it likes the look of", () => {
+			const onProfile = item({
+				title: "Right up your street",
+				tags: ["Drama"],
+				rating: 6.1,
+				ratingCount: 50_000,
+			});
+			const shown = rankSuggestions(
+				pool(onProfile, ...acclaimed(8)),
+				profile,
+				{ ...base, standard: 7.5 },
+			);
+			expect(shown.map((at) => at.item.title)).not.toContain(
+				"Right up your street",
+			);
+		});
+
+		// A row short of a card is worse than a row of what you would settle for.
+		it("shows it anyway rather than leave the row empty", () => {
+			const shown = rankSuggestions(pool(middling), profile, {
+				...base,
+				standard: 8.5,
+			});
+			expect(shown.map((at) => at.item.title)).toContain("Watchable");
+		});
+
+		/**
+		 * And what it settles for is still spread out. Topping the row up with
+		 * the best of what missed the bar sorted by score handed `fillSlots`
+		 * exactly seven candidates and nothing to choose between them, so every
+		 * cap stood down in turn — and score leans on provenance, so the row that
+		 * came back was seven neighbours of one favourite. The strictest setting
+		 * produced the least varied row, which is precisely backwards.
+		 */
+		it("settles for a spread rather than seven of one thing", () => {
+			const glut = Array.from({ length: 30 }, (_, at) =>
+				item({
+					title: `Horror ${at}`,
+					tags: ["Horror", "Thriller"],
+					rating: 7.2,
+					ratingCount: 50_000,
+				}),
+			);
+			const rest = ["Comedy", "Drama", "Documentary", "Animation"].map((genre) =>
+				item({ title: genre, tags: [genre], rating: 7.1, ratingCount: 50_000 }),
+			);
+			// Nothing here meets it, so the floors give way entirely.
+			const shown = rankSuggestions(pooled([...glut, ...rest]), profile, {
+				...base,
+				limit: 7,
+				standard: 8.5,
+			});
+			const horror = shown.filter((at) => at.item.tags.includes("Horror"));
+			expect(shown).toHaveLength(7);
+			expect(horror.length).toBeLessThanOrEqual(subjectSeats(7));
+		});
+	});
+
+	/**
+	 * Ranking is not filtering, and the gate alone left the row ordered the way
+	 * it always was: by where a suggestion came from. A neighbour of a favourite
+	 * carries up to half a point of seed weight before anything else is counted,
+	 * where the whole spread between a mediocre title and an acclaimed one is
+	 * about a sixth of a point — so a 7.6 a favourite pointed at buried an 8.9
+	 * nobody on your shelf happens to border. Fine as a default. Not fine for
+	 * somebody who has just said they want the good ones.
+	 */
+	it("puts the better film first once you have asked for better", () => {
+		const near = item({
+			title: "Near miss",
+			tags: ["Drama"],
+			rating: 7.6,
+			ratingCount: 50_000,
+		});
+		const great = item({
+			title: "Excellent",
+			tags: ["Comedy"],
+			rating: 8.9,
+			ratingCount: 50_000,
+		});
+		// Both found the same way, so the strategy budget is not what is being
+		// measured — the row's order within a slot is.
+		const seeded = emptyPool();
+		mergeSuggestions(seeded, [near], {
+			strategy: "exploit",
+			seed: "Something you loved",
+			strength: 0.95,
+		});
+		mergeSuggestions(seeded, [great], {
+			strategy: "exploit",
+			seed: "Something you quite liked",
+			strength: 0.3,
+		});
+
+		const usual = rankSuggestions(seeded, profile, { ...base, standard: 6.8 });
+		const picky = rankSuggestions(seeded, profile, { ...base, standard: 8.5 });
+
+		expect(usual[0]?.item.title).toBe("Near miss");
+		expect(picky[0]?.item.title).toBe("Excellent");
+	});
 
 	it("drops what you have already said no to", () => {
 		const gone = item({ title: "No thanks" });
@@ -609,11 +900,11 @@ describe("rankSuggestions", () => {
 	});
 
 	/**
-	 * `fillSlots` fills every seat it is given, so a thin pool used to put its
-	 * worst answers on screen beside its best and the row was judged on all of
-	 * them. Six good suggestions is a better row than seven.
+	 * The floors trim the surplus, not the row. Leaving it short was the wrong
+	 * trade: a rail of two cards and five card-widths of nothing reads as broken
+	 * rather than as discerning.
 	 */
-	it("would rather show fewer than pad the row with what you avoid", () => {
+	it("leaves out what you avoid while there is anything better", () => {
 		const avoided = taste([
 			entry({ tags: ["Musical"], rating: 2, status: "Watched" }),
 			entry({ tags: ["Musical"], rating: 1, status: "Watched" }),
@@ -622,7 +913,7 @@ describe("rankSuggestions", () => {
 			entry({ tags: ["Thriller"], rating: 9, status: "Watched" }),
 			entry({ tags: ["Thriller"], rating: 8, status: "Watched" }),
 		]);
-		const good = Array.from({ length: 4 }, (_, at) =>
+		const good = Array.from({ length: 7 }, (_, at) =>
 			item({ title: `Good ${at}`, tags: ["Thriller"] }),
 		);
 		const bad = Array.from({ length: 4 }, (_, at) =>
@@ -630,10 +921,101 @@ describe("rankSuggestions", () => {
 		);
 		const shown = rankSuggestions(pool(...good, ...bad), avoided, {
 			...base,
-			limit: 8,
+			limit: 7,
 		});
-		expect(shown.length).toBeLessThan(8);
+		expect(shown).toHaveLength(7);
 		expect(shown.map((at) => at.item.title).join()).not.toContain("Bad");
+	});
+
+	/** And fills the row from the bottom of the pile rather than showing a gap. */
+	it("fills the row rather than leaving it short", () => {
+		const avoided = taste([
+			entry({ tags: ["Musical"], rating: 2, status: "Watched" }),
+			entry({ tags: ["Musical"], rating: 1, status: "Watched" }),
+			entry({ tags: ["Thriller"], rating: 9, status: "Watched" }),
+		]);
+		const shown = rankSuggestions(
+			pool(
+				item({ title: "Good", tags: ["Thriller"] }),
+				...Array.from({ length: 6 }, (_, at) =>
+					item({ title: `Bad ${at}`, tags: ["Musical"] }),
+				),
+			),
+			avoided,
+			{ ...base, limit: 7 },
+		);
+		expect(shown).toHaveLength(7);
+	});
+
+	/**
+	 * What its own source makes of it, and what that is allowed to override.
+	 *
+	 * A shared genre is a weak signal and a 4.5 out of ten is a strong one, and
+	 * the row would seat the 4.5 on the strength of the genre.
+	 */
+	it("leaves out something the source itself rates poorly", () => {
+		const good = Array.from({ length: 4 }, (_, at) =>
+			item({ title: `Good ${at}`, tags: ["Drama"], rating: 7.6, ratingCount: 800 }),
+		);
+		const poor = item({
+			title: "Poorly rated",
+			tags: ["Drama"],
+			rating: 3.4,
+			ratingCount: 800,
+		});
+		const shown = rankSuggestions(pool(...good, poor), profile, {
+			...base,
+			limit: 4,
+		});
+		expect(shown.map((at) => at.item.title)).not.toContain("Poorly rated");
+	});
+
+	it("shows one anyway when it is sure enough about you", () => {
+		const sure = taste([
+			entry({ tags: ["Drama"], rating: 10, status: "Watched" }),
+			entry({ tags: ["Drama"], rating: 10, status: "Watched" }),
+			entry({ tags: ["Drama"], rating: 9, status: "Watched" }),
+			entry({ tags: ["Musical"], rating: 2, status: "Watched" }),
+		]);
+		const poor = item({
+			title: "Poorly rated",
+			tags: ["Drama"],
+			rating: 3.4,
+			ratingCount: 800,
+		});
+		const shown = rankSuggestions(pool(poor, item({ tags: ["Drama"] })), sure, {
+			...base,
+			limit: 2,
+		});
+		expect(shown.map((at) => at.item.title)).toContain("Poorly rated");
+	});
+
+	/**
+	 * The punt was exempt from the floor, and the only picks that exemption ever
+	 * rescued were the ones scoring below it — the ones actively against your
+	 * taste. So a row that had learned you turn musicals down put one up every
+	 * day and captioned it "branching out".
+	 */
+	it("does not punt at something it has learned you avoid", () => {
+		const opinions = taste([
+			entry({ tags: ["Musical"], rating: 2, status: "Watched" }),
+			entry({ tags: ["Musical"], rating: 1, status: "Watched" }),
+			entry({ tags: ["Musical"], rating: 2, status: "Watched" }),
+			entry({ tags: ["Drama"], rating: 9, status: "Watched" }),
+			entry({ tags: ["Drama"], rating: 9, status: "Watched" }),
+			entry({ tags: ["Drama"], rating: 8, status: "Watched" }),
+		]);
+		const at = pooled(
+			Array.from({ length: 4 }, (_, n) =>
+				item({ title: `Fine ${n}`, tags: ["Drama"] }),
+			),
+		);
+		mergeSuggestions(at, [item({ title: "A musical", tags: ["Musical"] })], {
+			strategy: "wildcard",
+			label: "Musical",
+		});
+		const shown = rankSuggestions(at, opinions, { ...base, limit: 4 });
+		expect(shown.map((one) => one.item.title)).not.toContain("A musical");
 	});
 
 	/**
@@ -668,6 +1050,7 @@ describe("rankSuggestions", () => {
 
 		// Held out of the row for a few days, not struck off it: past the window
 		// all that is left is a small charge a good suggestion can afford.
+
 		it("lets one it drew a fortnight ago win again", () => {
 			const old = item({ title: "Long enough ago", tags: ["Drama"], rating: 9 });
 			const never = item({ title: "Never shown", tags: ["Drama"] });

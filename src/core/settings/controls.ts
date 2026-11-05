@@ -1,6 +1,7 @@
 import {
 	App,
 	FuzzySuggestModal,
+	SecretComponent,
 	Setting,
 	TFile,
 	TFolder,
@@ -180,19 +181,36 @@ export function addSlider(
 		min: number;
 		max: number;
 		step: number;
+		/** Every move of the handle. Keep it cheap — this fires per pixel. */
 		onChange: (value: number) => void;
+		/**
+		 * Once, when the handle is let go.
+		 *
+		 * Where the write belongs on a slider with any real range to it. Saving
+		 * from `onChange` means a debounced write and a full notify on every step
+		 * of a drag, and every view listening re-renders under the pointer — which
+		 * on a thirty-step control is thirty re-renders to answer one question.
+		 */
+		onCommit?: (value: number) => void;
 	},
 ): Setting {
-	return new Setting(container)
+	const setting = new Setting(container)
 		.setName(options.name)
 		.setDesc(options.desc ?? "")
-		.addSlider((s) =>
+		.addSlider((s) => {
 			s
 				.setLimits(options.min, options.max, options.step)
 				.setValue(options.value)
 				.setDynamicTooltip()
-				.onChange(options.onChange),
-		);
+				.onChange(options.onChange);
+			const commit = options.onCommit;
+			if (commit) {
+				s.sliderEl.addEventListener("change", () =>
+					commit(Number(s.sliderEl.value)),
+				);
+			}
+		});
+	return setting;
 }
 
 /* ----------------------------------------------------- descriptor renderer */
@@ -232,8 +250,18 @@ export function renderDescriptor(
 					t.setPlaceholder(descriptor.placeholder ?? "")
 						.setValue(scope.get(descriptor.key, descriptor.default))
 						.onChange(commit);
-					if (descriptor.secret) t.inputEl.type = "password";
 				});
+			break;
+
+		case "secret":
+			new Setting(container)
+				.setName(descriptor.name)
+				.setDesc(descriptor.desc ?? "")
+				.addComponent((el) =>
+					new SecretComponent(app, el)
+						.setValue(scope.get(descriptor.key, ""))
+						.onChange(commit),
+				);
 			break;
 
 		case "file":

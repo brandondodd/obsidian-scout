@@ -1,5 +1,6 @@
 import { App, Plugin, PluginSettingTab, setIcon } from "obsidian";
 import type { ScoutContext } from "../context";
+import { backgroundSection } from "./sections/background";
 import { generalSection } from "./sections/general";
 import { librarySection } from "./sections/library";
 import { notesSection } from "./sections/notes";
@@ -21,6 +22,7 @@ const SECTIONS: readonly SettingsSection[] = [
 	notesSection,
 	librarySection,
 	suggestionsSection,
+	backgroundSection,
 	propertiesSection,
 	sourcesSection,
 	templatesSection,

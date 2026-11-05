@@ -9,7 +9,7 @@
         "http.server",
         "8842",
         "--directory",
-        "C:/Users/brand/Documents/Personal Vault/.obsidian/plugins/obsidian-scout"
+        "."
       ],
       "port": 8842
     }

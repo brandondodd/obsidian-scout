@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { entry, item, NOW, testConfig } from "../../test/fixtures";
 import type { MediaItem, MediaKind } from "../types";
-import { SuggestionEngine, type SuggestionPort } from "./engine";
+import {
+	SuggestionEngine,
+	type EngineInput,
+	type SuggestionPort,
+} from "./engine";
 import type { LibraryEntry } from "./entry";
-import type { FeedbackLog } from "./feedback";
+import type { FeedbackLog, ShownLog } from "./feedback";
+import type { Suggestion } from "./recommend";
 import type { RegistryFacts } from "./strategies";
 import { buildTaste } from "./taste";
 
@@ -48,13 +53,18 @@ class FakeSource implements SuggestionPort {
 		return this.answers.get(`similar:${ref.id}`) ?? [];
 	}
 
+	/** Answers by page number, for tests about how far down a catalogue it walks. */
+	deep: ((page: number) => MediaItem[]) | null = null;
+
 	async discover(
 		providerId: string,
 		query: { kind: MediaKind; page?: number },
 	): Promise<MediaItem[]> {
-		this.asked.push(`discover:${query.page ?? 1}`);
+		const page = query.page ?? 1;
+		this.asked.push(`discover:${page}`);
 		if (this.throws) throw new Error("the source is down");
-		return this.answers.get(`discover:${query.page ?? 1}`) ?? [];
+		if (this.deep) return this.deep(page);
+		return this.answers.get(`discover:${page}`) ?? [];
 	}
 
 	async series(providerId: string, ref: { id: string }): Promise<MediaItem[]> {
@@ -80,6 +90,7 @@ function drive(
 	port: SuggestionPort,
 	entries: readonly LibraryEntry[],
 	feedback: FeedbackLog = {},
+	extra: Partial<EngineInput> = {},
 ): SuggestionEngine {
 	const engine = new SuggestionEngine(port);
 	engine.update({
@@ -89,6 +100,7 @@ function drive(
 		feedback,
 		kinds: ["movie"] as MediaKind[],
 		now: NOW,
+		...extra,
 	});
 	return engine;
 }
@@ -480,6 +492,335 @@ describe("SuggestionEngine", () => {
 		expect(again.length).toBeGreaterThan(0);
 		expect(again.every((title) => rows[0]?.includes(title))).toBe(true);
 		expect(again.some((title) => rows[1]?.includes(title))).toBe(false);
+	});
+
+	/**
+	 * And it keeps working forwards through the pool rather than settling into a
+	 * pair of rows.
+	 *
+	 * The bug this is here for, and the one people actually reported: past the
+	 * third press the row alternated between the same two sets of seven for as
+	 * long as anybody kept pressing. Both halves of it were wrong. The hold came
+	 * off one stood-aside row at a time, so what came back was a *block* of seven
+	 * — the same seven as last time — and whether to go and ask the sources for
+	 * more was decided by counting the pool rather than by looking at the row it
+	 * was about to draw, so on a pool it could not seat it never asked at all.
+	 *
+	 * Sixteen titles and seven seats: deliberately not a round number, because
+	 * the ragged remainder is what tipped the old row into the alternation.
+	 */
+	it("keeps working through the pool instead of alternating two rows", async () => {
+		const port = new FakeSource({
+			"similar:1": Array.from({ length: 16 }, (_, at) =>
+				item({ title: `Film ${at}` }),
+			),
+		});
+		const entries = [seeded("Dune", "1")];
+		const engine = new SuggestionEngine(port);
+		const profile = buildTaste(config, entries, NOW);
+		const shown: ShownLog = {};
+		// A clock that moves, because how long ago you saw a thing is the whole of
+		// what orders the come-round, and a fixed `now` cannot tell it anything.
+		let now = NOW;
+		const push = () =>
+			engine.update({
+				config,
+				entries,
+				profile,
+				feedback: {},
+				kinds: ["movie"] as MediaKind[],
+				now,
+				shown,
+				onShown: (keys) => {
+					for (const key of keys) shown[key] = now.getTime();
+				},
+			});
+		push();
+		await settle();
+
+		const rows: string[][] = [];
+		for (let press = 0; press < 8; press++) {
+			push();
+			rows.push(engine.state().shown.map((at) => at.item.title));
+			engine.more();
+			await settle();
+			now = new Date(now.getTime() + 10 * 60 * 1000);
+		}
+
+		for (let at = 2; at < rows.length; at++) {
+			expect(rows[at]).not.toEqual(rows[at - 2]);
+		}
+		// Every title in the catalogue gets its turn rather than two thirds of
+		// them holding the row between them.
+		const drawn = new Set(rows.flat());
+		expect(drawn.size).toBe(16);
+	});
+
+	/**
+	 * And what comes round comes round oldest first, which only works if being
+	 * drawn again counts as being seen again.
+	 *
+	 * Each key used to be stamped once for the life of the engine, so a title the
+	 * row had come back to four times in ten minutes still looked, to the
+	 * cooldown, like something last seen when it first appeared — and the queue
+	 * that decides what comes round next was ordered by a lie.
+	 */
+	it("stamps a title again when it comes back round", async () => {
+		const port = new FakeSource({
+			"similar:1": Array.from({ length: 9 }, (_, at) =>
+				item({ title: `Film ${at}` }),
+			),
+		});
+		const entries = [seeded("Dune", "1")];
+		const engine = new SuggestionEngine(port);
+		const profile = buildTaste(config, entries, NOW);
+		const shown: ShownLog = {};
+		let now = NOW;
+		const push = () =>
+			engine.update({
+				config,
+				entries,
+				profile,
+				feedback: {},
+				kinds: ["movie"] as MediaKind[],
+				now,
+				shown,
+				onShown: (keys) => {
+					for (const key of keys) shown[key] = now.getTime();
+				},
+			});
+		push();
+		await settle();
+		const first = engine.state().shown.map((at) => at.item.title);
+		const stamps = { ...shown };
+
+		// Press until the row has come round to something from the first one.
+		let back: Suggestion[] = [];
+		for (let press = 0; press < 6 && back.length === 0; press++) {
+			engine.more();
+			await settle();
+			now = new Date(now.getTime() + 10 * 60 * 1000);
+			push();
+			back = engine
+				.state()
+				.shown.filter((at) => first.includes(at.item.title));
+		}
+		expect(back.length).toBeGreaterThan(0);
+		for (const one of back) {
+			const key = `${one.item.ref.providerId}:${one.item.ref.id}`;
+			expect(shown[key]).toBeGreaterThan(stamps[key] ?? 0);
+		}
+	});
+
+	/**
+	 * The one the row was actually failing on.
+	 *
+	 * Whether to go and ask again was decided on the size of the pool, and a pool
+	 * is never small — a hundred and forty candidates, every one of them already
+	 * on screen this week. So the press never asked anybody anything, and the row
+	 * shuffled the same hundred and forty until it gave up and repeated them.
+	 * What has to be counted is what is left that you have *not* seen.
+	 */
+	it("asks again when everything left in the pool has already been shown", async () => {
+		const answers = Array.from({ length: 40 }, (_, at) =>
+			item({ title: `Film ${at}` }),
+		);
+		const port = new FakeSource({ "similar:1": answers });
+		const shown = Object.fromEntries(
+			answers.map((one) => [`${one.ref.providerId}:${one.ref.id}`, NOW.getTime()]),
+		);
+		const engine = drive(port, [seeded("Dune", "1")], {}, { shown });
+		await settle();
+
+		const before = port.asked.length;
+		engine.more();
+		await settle();
+		expect(port.asked.length).toBeGreaterThan(before);
+	});
+
+	/**
+	 * And a session that opens where the last one opened asks the same first four
+	 * questions, gets the same answers, and has nothing but the same pool to make
+	 * a row out of. The rotation is what makes reopening the hub different from
+	 * never having closed it.
+	 */
+	it("asks about other titles of yours on a later session", async () => {
+		const library = Array.from({ length: 8 }, (_, at) =>
+			seeded(`Film ${at}`, String(at + 1)),
+		);
+		const first = new FakeSource();
+		drive(first, library, {}, { rotation: 0 });
+		const later = new FakeSource();
+		drive(later, library, {}, { rotation: 1 });
+		await settle();
+
+		// The first round of each, not everything they eventually walked: with
+		// nothing coming back they both keep asking until they run out of chase,
+		// and where a session *starts* is the whole of what the rotation moves.
+		const opened = (port: FakeSource) =>
+			port.asked.filter((one) => one.startsWith("similar:")).slice(0, 4);
+		expect(opened(first).length).toBeGreaterThan(0);
+		expect(opened(later)).not.toEqual(opened(first));
+	});
+
+	/**
+	 * The row reloading while you are reading it.
+	 *
+	 * A fetch was fired whenever the list of titles worth asking about changed at
+	 * all, and that list is longer and livelier than it looks: strength is nudged
+	 * by how recently something mattered, that is measured against the clock, and
+	 * two seeds a hair apart swap places between one render and the next. Every
+	 * swap threw away the row and put up a spinner. New seeds change what to ask
+	 * *next*, which matters when the row needs more and not before.
+	 */
+	it("does not go back to the sources when the row is still full", async () => {
+		const port = new FakeSource({
+			"similar:1": Array.from({ length: 40 }, (_, at) =>
+				item({ title: `Film ${at}` }),
+			),
+		});
+		const entries = [seeded("Dune", "1")];
+		const engine = drive(port, entries);
+		await settle();
+
+		const before = port.asked.length;
+		const wider = [...entries, seeded("Blade Runner", "2")];
+		engine.update({
+			config,
+			entries: wider,
+			profile: buildTaste(config, wider, NOW),
+			feedback: {},
+			kinds: ["movie"] as MediaKind[],
+			now: NOW,
+		});
+		await settle();
+		expect(port.asked.length).toBe(before);
+		expect(engine.state().shown.length).toBeGreaterThan(0);
+	});
+
+	/**
+	 * The row is not a repeat of itself.
+	 *
+	 * Drawing a row stamps it as shown, and anything shown lately is held out of
+	 * the row while there is something fresh to take its place — so the moment
+	 * the hub repainted for any reason at all, every card on screen was a card
+	 * the row had "already shown you" and all seven were replaced. What the
+	 * cooldown is for is the row you see *next*, not the one you are reading.
+	 */
+	it("holds the row still while you are looking at it", async () => {
+		const port = new FakeSource({
+			"similar:1": Array.from({ length: 40 }, (_, at) =>
+				item({ title: `Film ${at}` }),
+			),
+		});
+		const log: Record<string, number> = {};
+		const entries = [seeded("Dune", "1")];
+		const engine = drive(port, entries, {}, {
+			shown: log,
+			onShown: (keys) => {
+				for (const key of keys) log[key] = NOW.getTime();
+			},
+		});
+		await settle();
+
+		const first = engine.state().shown.map((at) => at.item.title);
+		// A repaint: same world, same engine, nothing asked for.
+		engine.update({
+			config,
+			entries,
+			profile: buildTaste(config, entries, NOW),
+			feedback: {},
+			kinds: ["movie"] as MediaKind[],
+			now: NOW,
+			shown: log,
+		});
+		expect(engine.state().shown.map((at) => at.item.title)).toEqual(first);
+	});
+
+	/**
+	 * One press, asked until it has an answer.
+	 *
+	 * A press asked exactly once, and a source asked about the same film twice
+	 * answers the same twenty titles — so most rounds taught the row nothing, the
+	 * press had nothing to show for itself, and the row came round to what it
+	 * already had. Three presses to reach a rotation, all three looking like it
+	 * was cycling.
+	 *
+	 * The catalogue rather than the seeds, because the page is what walks: round
+	 * one asks page two, and nothing here is new until page four.
+	 */
+	it("keeps asking on one press until it has things you have not seen", async () => {
+		const deeper = Array.from({ length: 9 }, (_, at) =>
+			item({ title: `Deeper ${at}` }),
+		);
+		const first = Array.from({ length: 8 }, (_, at) =>
+			item({ title: `Film ${at}` }),
+		);
+		const port = new FakeSource();
+		// A full row up front, then nothing worth having until several pages down.
+		port.deep = (page) => (page === 1 ? first : page >= 3 ? deeper : []);
+		const engine = drive(port, [seeded("Dune", "1")]);
+		await settle();
+		expect(port.asked.filter((one) => one === "discover:3")).toHaveLength(0);
+
+		engine.more();
+		await settle();
+		const pages = new Set(
+			port.asked.filter((one) => one.startsWith("discover:")),
+		);
+		expect(pages.size).toBeGreaterThan(2);
+		expect(engine.state().shown.map((at) => at.item.title).join()).toContain(
+			"Deeper",
+		);
+	});
+
+	/**
+	 * And while it is still asking, it does not put back the row you just
+	 * skipped. Coming round is the answer to "there is nothing else", and a
+	 * question still out with the sources is not nothing else — so a press that
+	 * had new titles seconds away spent those seconds showing the old ones, which
+	 * is precisely what cycling looks like.
+	 */
+	it("does not come round while it is still asking", async () => {
+		const port = new FakeSource({
+			"similar:1": Array.from({ length: 16 }, (_, at) =>
+				item({ title: `Film ${at}` }),
+			),
+		});
+		const engine = drive(port, [seeded("Dune", "1")]);
+		await settle();
+
+		// Two rows stood aside, so there is something for it to come round to.
+		const first = engine.state().shown.map((at) => at.item.title);
+		engine.more();
+		await settle();
+		engine.state();
+		engine.more();
+
+		const during = engine.state();
+		expect(during.loading).toBe(true);
+		expect(during.shown.length).toBeLessThan(first.length);
+		expect(during.shown.some((at) => first.includes(at.item.title))).toBe(false);
+	});
+
+	it("does ask when the seeds change and it has nothing left to show", async () => {
+		const port = new FakeSource();
+		const entries = [seeded("Dune", "1")];
+		const engine = drive(port, entries);
+		await settle();
+
+		const before = port.asked.length;
+		const wider = [...entries, seeded("Blade Runner", "2")];
+		engine.update({
+			config,
+			entries: wider,
+			profile: buildTaste(config, wider, NOW),
+			feedback: {},
+			kinds: ["movie"] as MediaKind[],
+			now: NOW,
+		});
+		await settle();
+		expect(port.asked.length).toBeGreaterThan(before);
 	});
 
 	it("tells whoever is watching when the answers land", async () => {

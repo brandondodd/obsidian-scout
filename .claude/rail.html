@@ -52,7 +52,9 @@
         <span class="scout-home-note">Learning from your library and 32 verdicts</span>
         <button class="scout-home-more"><span class="scout-icon" style="--icon-size:13px"></span>Show me others</button>
       </div>
-      <div class="scout-entries scout-entries-grid scout-home-rail" id="rail"></div>
+      <!-- `is-waiting`: a press can walk several rounds of questions now, and the
+           seats it is still out looking for are drawn rather than left as a hole. -->
+      <div class="scout-entries scout-entries-grid scout-home-rail is-waiting" id="rail"></div>
     </section>
 
     <section class="scout-home-section scout-taste-section">
@@ -105,7 +107,14 @@ const CARDS = [
   { title: "Paprika", meta: "2006 · Anime", why: "Worth a look" },
   { title: "The Zone of Interest", meta: "2023 · Movie", why: "Branching out" },
 ];
-document.getElementById("rail").innerHTML = CARDS.map((c) => `
+const WAITING = `
+  <div class="scout-entry scout-suggestion is-waiting" aria-hidden="true">
+    <div class="scout-entry-art"></div>
+    <div class="scout-entry-info">
+      <h4></h4><div class="scout-entry-meta"></div><div class="scout-entry-foot"></div>
+    </div>
+  </div>`;
+document.getElementById("rail").innerHTML = WAITING + WAITING + CARDS.slice(0, 5).map((c) => `
   <div class="scout-entry scout-suggestion" role="button" tabindex="0">
     <div class="scout-entry-art">
       <div class="scout-cover scout-cover-empty">${c.title.slice(0,2).toUpperCase()}</div>
@@ -131,26 +140,29 @@ document.getElementById("rail").innerHTML = CARDS.map((c) => `
     </div>
   </div>`).join("");
 
+// The bar measures the number printed at the end of it, per column — it used to
+// measure the affinity, which is not printed anywhere, so a row reading "14" sat
+// beside a shorter bar than one reading "10".
 const COLUMNS = [
   { title: "What you go for", blurb: "Rated above your own average, more than once",
     against: false, rows: [
-      ["Science Fiction", 24, 1], ["time loop", 7, 0.72], ["dystopia", 11, 0.6],
-      ["Psychological Thriller", 9, 0.44], ["found family", 4, 0.3], ["heist", 3, 0.18] ] },
+      ["Science Fiction", 24], ["time loop", 7], ["dystopia", 11],
+      ["Psychological Thriller", 9], ["found family", 4], ["heist", 3] ] },
   { title: "Who you follow", blurb: "Names and studios you keep coming back to",
     against: false, rows: [
-      ["Denis Villeneuve", 5, 0.9], ["Syncopy", 6, 0.71], ["Robert Pattinson", 3, 0.5],
-      ["A24", 8, 0.36], ["Satoshi Kon", 2, 0.2] ] },
+      ["Denis Villeneuve", 5], ["Syncopy", 6], ["Robert Pattinson", 3],
+      ["A24", 8], ["Satoshi Kon", 2] ] },
   { title: "Steering away from", blurb: "Held against a suggestion that carries it",
     against: true, rows: [
-      ["Western", 9, 0.8], ["Documentary", 8, 0.55], ["Musical", 4, 0.3], ["biography", 5, 0.12] ] },
+      ["Western", 9], ["Documentary", 14], ["Musical", 4], ["biography", 5] ] },
 ];
 document.getElementById("taste").innerHTML = COLUMNS.map((col) => `
   <div class="scout-taste-col${col.against ? " is-against" : ""}">
     <h4><span class="scout-icon" style="--icon-size:13px"></span>${col.title}</h4>
     <p class="scout-taste-blurb">${col.blurb}</p>
-    <ul class="scout-taste-rows">${col.rows.map(([label, count, share]) => `
+    <ul class="scout-taste-rows">${col.rows.map(([label, count]) => `
       <li>
-        <span class="scout-taste-fill" style="width:${Math.max(6, Math.round(share * 100))}%"></span>
+        <span class="scout-taste-fill" style="width:${Math.max(8, Math.round(count / Math.max(...col.rows.map((r) => r[1])) * 100))}%"></span>
         <span class="scout-taste-label">${label}</span>
         <span class="scout-taste-count">${count}</span>
       </li>`).join("")}

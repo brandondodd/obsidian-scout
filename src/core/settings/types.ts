@@ -11,6 +11,11 @@
 export interface SettingsScope {
 	get<T>(key: string, fallback: T): T;
 	set(key: string, value: unknown): Promise<void>;
+	/**
+	 * The value of a `secret` setting, read from Obsidian's secret storage.
+	 * The setting itself only holds the secret's name. Empty when unset.
+	 */
+	secret(key: string): string;
 }
 
 interface BaseDescriptor {
@@ -29,8 +34,16 @@ export type SettingDescriptor =
 			type: "text";
 			default: string;
 			placeholder?: string;
-			/** Masks the input; use for API tokens. */
-			secret?: boolean;
+	  })
+	| (BaseDescriptor & {
+			/**
+			 * A credential, kept in Obsidian's secret storage rather than in
+			 * data.json. The setting stores the secret's name; read the value
+			 * with `SettingsScope.secret`.
+			 */
+			type: "secret";
+			/** Where an older build kept the value itself, in plain text. */
+			legacyKey?: string;
 	  })
 	| (BaseDescriptor & {
 			type: "file";
@@ -60,7 +73,7 @@ export function defaultsOf(
 ): Record<string, unknown> {
 	const out: Record<string, unknown> = {};
 	for (const d of descriptors) {
-		if (d.type !== "button" && d.type !== "info") out[d.key] = d.default;
+		if ("default" in d) out[d.key] = d.default;
 	}
 	return out;
 }

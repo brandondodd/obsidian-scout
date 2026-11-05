@@ -195,6 +195,36 @@ describe("sortEntries", () => {
 		).toEqual(["Mine", "Borrowed"]);
 	});
 
+	/**
+	 * A library sorted by what you thought of it is mostly ties — everything you
+	 * liked is an 8 — and under them the order used to fall through to the
+	 * alphabet, which is not an opinion about anything.
+	 */
+	it("breaks a tie between your own scores with the world's", () => {
+		const entries = [
+			entry("Aardvark", { rating: 8, sourceRating: 6.1 }),
+			entry("Zodiac", { rating: 8, sourceRating: 7.7 }),
+			entry("Marigold", { rating: 8, sourceRating: 7.2 }),
+		];
+		expect(
+			sortEntries(entries, "rating-desc", config).map((e) => e.title),
+		).toEqual(["Zodiac", "Marigold", "Aardvark"]);
+		expect(
+			sortEntries(entries, "rating-asc", config).map((e) => e.title),
+		).toEqual(["Aardvark", "Marigold", "Zodiac"]);
+	});
+
+	/** And an entry nobody has scored still sorts last among the tied. */
+	it("puts one nobody has scored below the ones somebody has", () => {
+		const entries = [
+			entry("Anonymous", { rating: 8 }),
+			entry("Known", { rating: 8, sourceRating: 5.2 }),
+		];
+		expect(
+			sortEntries(entries, "rating-desc", config).map((e) => e.title),
+		).toEqual(["Known", "Anonymous"]);
+	});
+
 	// Nobody having voted is not a verdict of nought.
 	it("treats a source score of zero as no score", () => {
 		const entries = [entry("Unvoted", { sourceRating: 0 }), entry("Bad", { rating: 1 })];

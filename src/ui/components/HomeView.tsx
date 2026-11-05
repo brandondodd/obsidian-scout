@@ -2,7 +2,7 @@ import { Menu, Notice } from "obsidian";
 import React, { useEffect, useMemo, useReducer, useState } from "react";
 import type { ScoutContext } from "../../core/context";
 import { ratingScaleFor } from "../../core/library/config";
-import { SuggestionEngine } from "../../core/library/engine";
+import { SHOWN, SuggestionEngine } from "../../core/library/engine";
 import type { LibraryEntry } from "../../core/library/entry";
 import { episodeLabel } from "../../core/library/episodes";
 import {
@@ -27,6 +27,7 @@ import {
 	buildTaste,
 	topTraits,
 	type TasteProfile,
+	type TraitSummary,
 } from "../../core/library/taste";
 import { traitKey } from "../../core/library/traits";
 import { MEDIA_KIND_LABELS, type MediaItem } from "../../core/types";
@@ -60,14 +61,11 @@ import {
  * both things on the go, and they share the row.
  */
 
-/** Suggestions on screen at once — one full rail, same as every other row. */
-const SHOWN = 7;
-
-/** Seeds asked about per fetch — one request each, through the shared cache. */
-const SEEDS_PER_ROUND = 4;
-
-/** Rounds of catalogue paging to allow once the seeds are used up. */
-const EXPLORE_ROUNDS = 4;
+/* `SHOWN`, `SEEDS_PER_ROUND` and `EXPLORE_ROUNDS` were declared here and left
+   behind when the row's machinery moved into `engine.ts` and `strategies.ts`.
+   Nothing read them; two copies of a number that has to agree is a bug waiting
+   for somebody to change one of them. `SHOWN` is imported from the engine, which
+   is the one that decides how many there are. */
 
 export interface HomeViewProps {
 	ctx: ScoutContext;
@@ -476,6 +474,7 @@ function Suggestions({
 		profile,
 		feedback,
 		kinds,
+		rotation: ctx.settings.rotation(),
 		shown: ctx.settings.shownLog(),
 		onShown: (keys) => ctx.settings.markShown(keys),
 	});
@@ -490,6 +489,26 @@ function Suggestions({
 			key,
 			current === verdict ? null : recordFor(item, verdict),
 		);
+	};
+
+	/**
+	 * Adding it is the strongest yes there is, so it counts as one.
+	 *
+	 * Adding used to teach the row nothing at all. The note lands in the library
+	 * and the library is what the taste model is built from — but a note carries
+	 * a title, a year and whatever tags the template wrote, where a verdict
+	 * carries the traits the source knew at the moment you said yes: the
+	 * keywords, the crew, the studio. You went to the trouble of pressing the one
+	 * button that means "I want this", and the row would have taken a thumbs-up
+	 * more seriously than the act itself.
+	 *
+	 * Not a toggle, unlike the thumbs: a second press of add is not somebody
+	 * taking it back.
+	 */
+	const liked = (item: MediaItem) => {
+		const key = feedbackKey(item.ref);
+		if (ctx.settings.feedback()[key]?.verdict === "liked") return;
+		ctx.settings.setFeedback(key, recordFor(item, "liked"));
 	};
 
 	const trained = countVerdicts(feedback);
@@ -519,6 +538,19 @@ function Suggestions({
 				}
 			/>
 
+			{/* Off by default: it contacts sources about the whole library. */}
+			{!config.enrichSuggestions && (
+				<p className="scout-message scout-home-optin">
+					Suggestions improve if Scout reads up on your titles in the background.{" "}
+					<button
+						className="mod-cta"
+						onClick={() => ctx.settings.setLibrary("enrichSuggestions", true)}
+					>
+						Turn on
+					</button>
+				</p>
+			)}
+
 			{error && shown.length === 0 && <p className="scout-error">{error}</p>}
 			{!error && shown.length === 0 && (
 				<p className="scout-message">
@@ -528,15 +560,44 @@ function Suggestions({
 				</p>
 			)}
 
-			<div className="scout-entries scout-entries-grid scout-home-rail">
+			<div
+				className={`scout-entries scout-entries-grid scout-home-rail${
+					loading ? " is-waiting" : ""
+				}`}
+			>
 				{shown.map((at) => (
 					<SuggestionCard
 						key={suggestionKey(at.item)}
 						ctx={ctx}
 						suggestion={at}
+						onAdded={liked}
 						onVote={vote}
 					/>
 				))}
+				{/* The seats it is still out looking for.
+				    A press can take several rounds now, and without these the row
+				    silently shrank to two cards and then grew back — which reads
+				    as a bug, where a row of waiting cards reads as an answer on
+				    its way. Hidden from the screen reader: there is nothing here
+				    to read, and the button already says "Looking…". */}
+				{loading &&
+					Array.from(
+						{ length: Math.max(0, SHOWN - shown.length) },
+						(_, at) => (
+							<div
+								key={`waiting-${at}`}
+								className="scout-entry scout-suggestion is-waiting"
+								aria-hidden="true"
+							>
+								<div className="scout-entry-art" />
+								<div className="scout-entry-info">
+									<h4 />
+									<div className="scout-entry-meta" />
+									<div className="scout-entry-foot" />
+								</div>
+							</div>
+						),
+					)}
 			</div>
 		</section>
 	);
@@ -545,10 +606,13 @@ function Suggestions({
 function SuggestionCard({
 	ctx,
 	suggestion,
+	onAdded,
 	onVote,
 }: {
 	ctx: ScoutContext;
 	suggestion: Suggestion;
+	/** Told once the note exists, so adding counts as a yes — see `Suggestions`. */
+	onAdded: (item: MediaItem) => void;
 	onVote: (item: MediaItem, verdict: FeedbackVerdict) => void;
 }): React.ReactElement {
 	const { item, reasons, verdict } = suggestion;
@@ -597,6 +661,7 @@ function SuggestionCard({
 		setBusy(true);
 		try {
 			await ctx.factory.create(item, new AbortController().signal);
+			onAdded(item);
 		} catch (err) {
 			new Notice(
 				`Could not create the note: ${
@@ -732,6 +797,64 @@ function SuggestionCard({
 /** Two titles minimum, or the panel reports the model's flukes back as facts. */
 const TASTE_EVIDENCE = 2;
 
+/**
+ * The rows a column actually shows: one per thing, however many ways the model
+ * knows it.
+ *
+ * A trait is a namespace and a value, and these columns deliberately draw from
+ * more than one namespace at a time — so "fiction, thrillers" learned as a genre
+ * off a book's frontmatter and "fiction, thrillers" harvested as a keyword are
+ * two different traits with the same name, and the panel listed both, with
+ * different counts, one above the other. To a reader that is not two facts. It
+ * is the same fact, printed twice, apparently disagreeing with itself.
+ *
+ * Kept rather than added together: the two were learned from overlapping titles,
+ * and summing them would claim more evidence than exists. The stronger one wins,
+ * which is the one that was moving the recommendations anyway.
+ */
+function shownRows(
+	rows: readonly TraitSummary[],
+	limit: number,
+): TraitSummary[] {
+	const by = new Map<string, TraitSummary>();
+	for (const row of rows) {
+		const name = row.label.trim().toLowerCase();
+		const held = by.get(name);
+		if (!held || Math.abs(row.affinity.score) > Math.abs(held.affinity.score)) {
+			by.set(name, row);
+		}
+	}
+	// Which rows appear is decided by how strongly the model feels about them —
+	// that is the interesting ranking, and `topTraits` has already done it. What
+	// order they are drawn in is decided by the bars, because a column of bars
+	// that does not descend reads as a broken chart whatever it is sorted by.
+	return [...by.values()]
+		.slice(0, limit)
+		.sort((a, b) => b.affinity.count - a.affinity.count);
+}
+
+/** The longest bar in a column — see the note on `scout-taste-fill`. */
+function most(rows: readonly TraitSummary[]): number {
+	return Math.max(1, ...rows.map((one) => one.affinity.count));
+}
+
+/**
+ * Sentence case, because the model learns its vocabulary from four places and
+ * they do not agree.
+ *
+ * A genre off your own frontmatter keeps your spelling; a keyword harvested from
+ * a source arrives lower-cased; and a trait recovered from an old thumbs-down
+ * has no spelling at all beyond the key it was stored under, which is folded.
+ * So one column read "Mystery, grim, clown makeup, Fiction" — which says nothing
+ * about the model and a great deal about where each row came from, and the
+ * reader is owed neither.
+ */
+function capitalised(label: string): string {
+	const text = label.trim();
+	if (!text) return text;
+	return `${text[0]?.toUpperCase() ?? ""}${text.slice(1)}`;
+}
+
 function Taste({
 	ctx,
 	profile,
@@ -744,35 +867,28 @@ function Taste({
 	// keywords the five best-scoring were five one-off flukes and every one of
 	// them was then thrown away — which is why this column came out empty on a
 	// library of a hundred and thirty rated titles.
-	const liked = topTraits(profile, ["genre", "keyword"], 6, "liked", TASTE_EVIDENCE);
-	const followed = topTraits(
-		profile,
-		["director", "studio", "person"],
-		5,
-		"liked",
-		TASTE_EVIDENCE,
+	const liked = shownRows(
+		topTraits(profile, ["genre", "keyword"], 12, "liked", TASTE_EVIDENCE),
+		6,
 	);
-	const avoided = topTraits(
-		profile,
-		["genre", "keyword"],
+	const followed = shownRows(
+		topTraits(
+			profile,
+			["director", "studio", "person"],
+			10,
+			"liked",
+			TASTE_EVIDENCE,
+		),
+		5,
+	);
+	const avoided = shownRows(
+		topTraits(profile, ["genre", "keyword"], 8, "disliked", TASTE_EVIDENCE),
 		4,
-		"disliked",
-		TASTE_EVIDENCE,
 	);
 
 	if (liked.length === 0 && followed.length === 0 && avoided.length === 0) {
 		return null;
 	}
-
-	// Bars are relative to the strongest thing shown, not to an absolute scale:
-	// affinities are small numbers by construction, and a column of bars all at
-	// four per cent would say nothing to anybody.
-	const widest = Math.max(
-		...[...liked, ...followed, ...avoided].map((one) =>
-			Math.abs(one.affinity.score),
-		),
-		0.0001,
-	);
 
 	const column = (
 		title: string,
@@ -795,19 +911,25 @@ function Taste({
 							    strip beside it. Ten of these stacked in three
 							    columns is a lot of furniture for one number each,
 							    and a labelled bar is one object where a bar plus a
-							    label is two. */}
+							    label is two.
+
+							    It measures the number printed at the end of it,
+							    which sounds too obvious to write down and was not
+							    true: it used to measure the affinity, which is not
+							    printed anywhere, so a row reading "14" sat beside a
+							    shorter bar than one reading "10" and the panel
+							    looked simply wrong. Two quantities, one of them
+							    invisible, is a chart nobody can read. */}
 							<span
 								className="scout-taste-fill"
 								style={{
 									width: `${Math.max(
-										6,
-										Math.round(
-											(Math.abs(one.affinity.score) / widest) * 100,
-										),
+										8,
+										Math.round((one.affinity.count / most(rows)) * 100),
 									)}%`,
 								}}
 							/>
-							<span className="scout-taste-label">{one.label}</span>
+							<span className="scout-taste-label">{capitalised(one.label)}</span>
 							<span
 								className="scout-taste-count"
 								title={`Learned from ${one.affinity.count} of your titles`}

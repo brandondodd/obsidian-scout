@@ -1698,7 +1698,12 @@ h3.scout-section-title {
 	display: flex;
 	align-items: flex-end;
 	gap: 2px;
-	overflow-x: auto;
+	/* Sideways only. `overflow-x: auto` on its own makes the other axis `auto`
+	   too, and the lit tab's `margin-bottom: -1px` is one pixel of vertical
+	   overflow — enough that a thumb could drag the whole bar up and down. One
+	   pixel of travel is not a feature anybody wanted; it just felt broken. */
+	overflow: auto hidden;
+	touch-action: pan-x;
 	scrollbar-width: none;
 	border-bottom: 1px solid var(--background-modifier-border);
 }
@@ -1759,8 +1764,13 @@ h3.scout-section-title {
 /* Pinned to the end of the bar, and stuck there once the tabs outgrow it: the
    two buttons that are not tabs must not be the two things you have to scroll
    sideways to find. */
-.scout-view-save,
-.scout-view-manage {
+/* Qualified by the bar, and that is what makes it work: `.scout-view-bar
+   button` sets `background: transparent` and scores higher than a lone class of
+   ours, so these two were see-through — and a see-through sticky button with
+   tabs sliding under it looks exactly like tabs overlapping each other, which
+   is what it was reported as. */
+.scout-view-bar .scout-view-save,
+.scout-view-bar .scout-view-manage {
 	position: sticky;
 	z-index: 1;
 	background: var(--background-primary);
@@ -1803,7 +1813,8 @@ h3.scout-section-title {
 		flex: 0 0 100%;
 		order: 1;
 		flex-wrap: nowrap;
-		overflow-x: auto;
+		overflow: auto hidden;
+		touch-action: pan-x;
 		scrollbar-width: none;
 		padding-inline-end: 12px;
 	}
@@ -2590,7 +2601,11 @@ body.is-phone .scout-view-bar,
 body.is-phone .scout-stats,
 body.is-phone .scout-home-figures {
 	flex-wrap: nowrap;
-	overflow-x: auto;
+	/* Sideways only — see `.scout-view-bar`. Restating `overflow-x` here would
+	   quietly put the other axis back to `auto`, which is how the views bar came
+	   to be draggable up and down after it had been fixed once already. */
+	overflow: auto hidden;
+	touch-action: pan-x;
 	scrollbar-width: none;
 	/* The last chip should be able to reach the middle of the screen rather
 	   than stopping hard against the edge. */
@@ -2616,8 +2631,14 @@ body.is-phone .scout-library-toolbar {
 	flex-wrap: wrap;
 	gap: 6px;
 }
+/* A basis of `auto` is the box's content width, and a flex line breaks on the
+   hypothetical sizes — before anything is allowed to shrink. So the search box
+   claimed its full 260 and pushed the layout buttons onto a line of their own,
+   whereupon it grew to fill the line it had just cleared. From a small basis all
+   three fit, and the box takes whatever is left over. The same reasoning is
+   already written out over `.scout-filter-controls`; this box never got it. */
 body.is-phone .scout-search-wrap {
-	flex: 1 1 auto;
+	flex: 1 1 120px;
 	min-width: 0;
 }
 body.is-phone .scout-filter-controls {
@@ -2659,6 +2680,34 @@ body.is-phone .scout-view-save {
 	padding-inline-start: 8px;
 }
 
+/* Scrolling a shelf of three hundred cards on a phone.
+ *
+ * Two things were making it stutter, and both are per card, which is what turns
+ * a small cost into a large one.
+ *
+ * `content-visibility` is the large win: the browser skips layout, paint and
+ * hit-testing for anything scrolled off screen, so a shelf of three hundred
+ * costs about what a screenful costs. It needs the intrinsic size to keep the
+ * scrollbar honest — `auto` remembers each card's real height once it has been
+ * seen, and 280px is what one measures before that.
+ *
+ * And the kind badge carried a `backdrop-filter`, which is a compositing layer
+ * and a readback of everything behind it, on every card on the shelf. Two
+ * pixels of blur behind a 21px plate that is already 60% black is not worth one
+ * of those, let alone three hundred. The plate stays; the blur goes, and only
+ * here — on a desktop it costs nothing anybody can feel. */
+body.is-phone .scout-entries-grid > .scout-entry,
+body.is-phone .scout-entries-list > .scout-entry {
+	content-visibility: auto;
+	contain-intrinsic-size: auto 280px;
+}
+body.is-phone .scout-entries-list > .scout-entry {
+	contain-intrinsic-size: auto 71px;
+}
+body.is-phone .scout-kind-badge {
+	backdrop-filter: none;
+}
+
 /* A shelf, swiped. The grid is right on a screen wide enough to hold a row of
    it; on a phone seven cards is four wraps of two, and a page of rails like
    that is a wall. One row you push along is how every phone shows a shelf, and
@@ -2666,7 +2715,8 @@ body.is-phone .scout-view-save {
 body.is-phone .scout-home-rail {
 	display: flex;
 	gap: 10px;
-	overflow-x: auto;
+	overflow: auto hidden;
+	touch-action: pan-x;
 	scroll-snap-type: x proximity;
 	scrollbar-width: none;
 	padding-inline-end: 12px;
@@ -2674,6 +2724,16 @@ body.is-phone .scout-home-rail {
 }
 body.is-phone .scout-home-rail > .scout-entry {
 	flex: 0 0 39%;
+	/* Without this the basis above is a suggestion. A flex item will not shrink
+	   below its own min-content width, and a card's min-content width is its
+	   longest unbreakable line — so a card titled "Everything Everywhere All at
+	   Once", or one carrying a long reason, quietly ignored the 39% and came out
+	   twice the width of its neighbours, cover and all. The title is already
+	   set to truncate; it never got the chance, because nothing was narrow
+	   enough to truncate against. Only the phone rail is affected: the desktop
+	   grid states its own minimum in `minmax()`, so the automatic one never
+	   applies there. */
+	min-width: 0;
 	scroll-snap-align: start;
 }
 body.is-phone .scout-home {
@@ -2895,6 +2955,65 @@ body.is-phone .scout-condition input {
 		minmax(max(112px, (100% - 6 * 12px) / 7), 1fr)
 	);
 	gap: 14px 12px;
+}
+
+/* Out asking, and saying so.
+
+   A press can now walk several rounds of questions before it has a row's worth
+   of things you have not seen, and that takes as long as it takes. Without this
+   the row quietly shrank to whatever was left, sat there, and then filled back
+   in — which reads as a fault. The cards that are still coming are drawn as
+   empty seats, and what is already on screen stops responding, because it is
+   about to be replaced and a card that answers a click it is going to lose is
+   worse than one that does not. */
+.scout-home-rail.is-waiting > .scout-entry:not(.is-waiting) {
+	opacity: 0.4;
+	pointer-events: none;
+}
+.scout-entry.is-waiting {
+	pointer-events: none;
+}
+.scout-entry.is-waiting .scout-entry-art {
+	background: var(--background-modifier-hover, var(--background-secondary));
+	animation: scout-waiting 1.1s ease-in-out infinite;
+}
+/* The bars keep each line's real height and show a thinner bar inside it, so a
+   waiting card is exactly as tall as a real one. A card that is twenty pixels
+   short makes the row it is waiting in look broken, which is the opposite of
+   what it is for — and this row has been made ragged by a collapsing foot
+   before. */
+.scout-entry.is-waiting h4,
+.scout-entry.is-waiting .scout-entry-meta,
+.scout-entry.is-waiting .scout-entry-foot:empty {
+	box-sizing: border-box;
+	border-radius: 3px;
+	background: var(--background-modifier-hover, var(--background-secondary));
+	background-clip: content-box;
+	animation: scout-waiting 1.1s ease-in-out infinite;
+}
+.scout-entry.is-waiting h4 {
+	height: 18px;
+	padding: 5px 0;
+}
+.scout-entry.is-waiting .scout-entry-meta {
+	width: 60%;
+	height: 15px;
+	padding: 4px 0;
+}
+.scout-entry.is-waiting .scout-entry-foot:empty {
+	display: block;
+	width: 78%;
+	height: 14px;
+	padding: 3px 0;
+}
+@keyframes scout-waiting {
+	0%,
+	100% {
+		opacity: 0.45;
+	}
+	50% {
+		opacity: 0.8;
+	}
 }
 
 /* ------------------------------------------------------------ suggestions */
@@ -3907,4 +4026,14 @@ body.is-phone .scout-combo-list li {
    the truth, and it hid nothing. Both are kept: this hides it, that says so. */
 .scout-series:not(.is-open) .scout-series-strip {
 	display: none;
+}
+
+/* Opt-in to background reading-up, above the suggestion row. */
+.scout-home-optin {
+	padding: 4px 0 12px;
+	text-align: start;
+	font-size: var(--font-ui-small);
+}
+.scout-home-optin button {
+	margin-inline-start: 8px;
 }

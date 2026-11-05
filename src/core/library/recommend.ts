@@ -1,6 +1,11 @@
 import { normalizeTitle } from "../title";
 import type { MediaItem, MediaKind } from "../types";
-import { ratingFraction, statusTone, type LibraryConfig } from "./config";
+import {
+	ratingFraction,
+	statusTone,
+	SUGGESTION_STANDARD,
+	type LibraryConfig,
+} from "./config";
 import { rankReasons, type Reason } from "./reasons";
 import type { TraitKey } from "./traits";
 import type { LibraryEntry } from "./entry";
@@ -15,6 +20,7 @@ import { neighbourBoost, type Anchor } from "./neighbours";
 import {
 	candidateOfItem,
 	entrySignal,
+	kindShare,
 	rankDiverse,
 	scoreCandidate,
 	type KindStat,
@@ -51,7 +57,20 @@ import { parseTrait } from "./traits";
  * every time; one fed everything you finished and did not dislike has fifty,
  * and the difference is the difference between a row that changes and a row
  * that does not. What the ratings buy is *ordering*, not membership.
+ *
+ * Which is why what you have merely *added* now counts too, at a fraction of
+ * what watching it counts for. Putting something on the shelf is a choice you
+ * made about it — a weaker statement than finishing it and a far stronger one
+ * than silence — and excluding it cost the row most of the library it had to
+ * draw on. A hundred and thirty things worth asking about became three hundred,
+ * and the questions the row can ask are the whole of what it can answer.
+ *
+ * The one exclusion left is the one that means something: a score below halfway
+ * is a considered opinion that it was not good, and a drop is the same opinion
+ * with the evidence.
  */
+const PLANNED_STRENGTH = 0.42;
+
 export function seedStrength(
 	config: LibraryConfig,
 	entry: LibraryEntry,
@@ -65,14 +84,17 @@ export function seedStrength(
 	// A middling score is a considered opinion that it was middling. Asking for
 	// more of it is asking for more middling things.
 	if (fraction !== undefined && fraction < 0.5) return null;
-	// Nothing recorded and never started: no reason to think you liked it.
-	if (fraction === undefined && !entry.favorite && tone !== "done" && tone !== "active") {
-		return null;
-	}
 
 	const signal = entrySignal(config, entry, now);
-	const base = fraction ?? signal?.value ?? 0.6;
 	const recency = signal?.weight ?? 0.5;
+	// Unrated and unstarted: worth asking about, and worth less than the things
+	// you actually sat through. Ranked below every finished title, so it fills
+	// the tail of the seed list rather than the head of it.
+	const base =
+		fraction ??
+		(tone === "done" || tone === "active" || entry.favorite
+			? (signal?.value ?? 0.6)
+			: PLANNED_STRENGTH);
 	// Weighted towards how much you liked it, nudged by how recently it mattered
 	// — a favourite from last month is the best question to ask a source.
 	return base * 0.8 + recency * 0.2 + (entry.favorite ? 0.12 : 0);
@@ -128,9 +150,18 @@ export interface DiscoverPlan {
  * being science fiction makes science fiction your baseline rather than your
  * preference, and the arithmetic correctly reports zero. That is the right
  * answer to "what do you like more than usual" and the wrong answer to "what
- * should we go and look for", so when nothing stands out this falls back to
- * what you simply keep most of. Weaker evidence, but it is the evidence there
- * is, and asking a catalogue for nothing in particular is worse.
+ * should we go and look for", so what you simply keep most of stands behind it.
+ * Weaker evidence, but it is the evidence there is, and asking a catalogue for
+ * nothing in particular is worse.
+ *
+ * The two are one list rather than a fallback, and that is the fix for a row
+ * that could only think of one thing. Standing out is a comparison against your
+ * own average, so a person with one big habit and a few smaller ones has two or
+ * three genres clearing it at most — and taking only those meant the discovery
+ * half asked about the same pair every round while the rest of what they
+ * actually watch was never mentioned to a catalogue at all. What stands out
+ * still comes first, so nothing that was ranked ahead has been demoted; there
+ * is simply something behind it now.
  */
 export function tasteGenres(
 	profile: TasteProfile,
@@ -156,7 +187,6 @@ export function tasteGenres(
 		.filter(([, at]) => at.score > 0.015)
 		.sort((a, b) => b[1].score - a[1].score)
 		.map(([name]) => name);
-	if (liked.length >= 2) return liked.slice(0, limit);
 
 	const common = all
 		// Anything actively rated below your average stays out: keeping a lot of
@@ -203,10 +233,72 @@ export function kindWeight(profile: TasteProfile): (at: KindStat) => number {
 	return (one) => one.owned;
 }
 
+/**
+ * How far down a catalogue the row walks before coming round to the top.
+ *
+ * The page used to be the round number and nothing else, which was right while
+ * a round only ever counted presses of "show me others" and wrong the moment the
+ * round carries a rotation across sessions too: the ninetieth round asked for
+ * page ninety-one, and no catalogue has one. Eight pages sorted by rating is
+ * about a hundred and sixty titles per kind per genre — deeper than the row can
+ * exhaust in a session, and shallow enough that every page of it is worth
+ * seeing.
+ */
+export const DISCOVER_PAGES = 8;
+
+/**
+ * The `round`th window of `size` items, coming round again at the end.
+ *
+ * Wrapping rather than running off the end is what lets "show me others" be
+ * pressed indefinitely. Slicing meant the fifth press asked about seeds
+ * twenty-one to twenty-four of a list of eighteen — that is, about nothing — and
+ * the row simply stopped having anything to say. Coming round to the start asks
+ * a question already asked, which the day-long HTTP cache answers for free, and
+ * the pool it lands in has moved on: the seven things on screen have been stood
+ * aside, so the same answers produce a different row.
+ */
+export function wrap<T>(all: readonly T[], round: number, size: number): T[] {
+	if (all.length === 0) return [];
+	const start = (round * size) % all.length;
+	return [...all, ...all].slice(start, start + Math.min(size, all.length));
+}
+
+/**
+ * How many genres the discovery half keeps in rotation, and how many of them
+ * one question carries.
+ *
+ * Asking about the same top three every round was the discovery half quietly
+ * agreeing with the exploit half instead of counterbalancing it. Someone who
+ * mostly watches horror has horror at the top of this list every time, so the
+ * one part of the row that reaches past the library reached into the same
+ * corner of it — and the catalogues cap what they will take anyway (TMDB ORs
+ * three), so the fourth genre was never once asked about. A window that moves
+ * with the round asks about all of them across a few presses, which is the
+ * difference between "more of your favourite genre" and "more of what you go
+ * for".
+ */
+const DISCOVER_GENRES = 6;
+const GENRES_PER_PLAN = 3;
+
+/**
+ * How far below the asking standard a model with little to go on may drop.
+ *
+ * A strict floor plus a genre it guessed at can return an empty list, and an
+ * empty row teaches nobody anything. Applied as a relief from wherever the
+ * standard has been set rather than as a number of its own, so somebody who
+ * asked for the acclaimed end still gets the acclaimed end on their fourth
+ * note.
+ */
+export const UNSURE_RELIEF = 0.4;
+
+/** And how far above it the punt asks, being off-profile by construction. */
+export const WILDCARD_PREMIUM = 0.4;
+
 export function discoverPlans(
 	profile: TasteProfile,
 	round: number,
 	kinds: readonly MediaKind[],
+	standard: number = SUGGESTION_STANDARD.default,
 ): DiscoverPlan[] {
 	const weight = kindWeight(profile);
 	const share = [...profile.kinds.entries()]
@@ -218,18 +310,18 @@ export function discoverPlans(
 	// kinds the sources can answer for, rather than nothing at all.
 	const targets = share.length > 0 ? share : kinds.slice(0, 1);
 
-	const liked = tasteGenres(profile, "liked");
+	const liked = tasteGenres(profile, "liked", DISCOVER_GENRES);
 	const avoid = tasteGenres(profile, "disliked", 2);
 
 	return targets.map((kind) => ({
 		kind,
-		genres: liked,
+		genres: wrap(liked, round, GENRES_PER_PLAN),
 		without: avoid,
 		// Loosened when the model has little to go on: a strict floor plus a
 		// genre it guessed at can return an empty list, and an empty row teaches
 		// nobody anything.
-		minRating: profile.sampled >= 4 ? 6.8 : 6.4,
-		page: round + 1,
+		minRating: standard - (profile.sampled >= 4 ? 0 : UNSURE_RELIEF),
+		page: (round % DISCOVER_PAGES) + 1,
 	}));
 }
 
@@ -385,6 +477,10 @@ export interface Suggestion {
 	score: number;
 	/** The profile's own part of that score — see `Verdict.fit`. */
 	fit: number;
+	/** What its own source makes of it — see `Verdict.merit`. */
+	merit: number;
+	/** That, out of ten — see `Verdict.rating`. What the standard is read against. */
+	rating?: number;
 	/** Why, strongest first — see `rankReasons`. */
 	reasons: Reason[];
 	seeds: string[];
@@ -413,7 +509,14 @@ export function scoreSuggestion(
 	raw: RawSuggestion,
 	now: Date = new Date(),
 	anchors: readonly Anchor[] = [],
-): { score: number; fit: number; reasons: Reason[] } {
+	standard: number = SUGGESTION_STANDARD.default,
+): {
+	score: number;
+	fit: number;
+	merit: number;
+	rating?: number;
+	reasons: Reason[];
+} {
 	const candidate = candidateOfItem(raw.item);
 	const verdict = scoreCandidate(profile, candidate, now);
 	const near = neighbourBoost(
@@ -430,6 +533,7 @@ export function scoreSuggestion(
 		verdict.score +
 		agreement +
 		near.boost +
+		qualityLean(standard) * verdict.merit +
 		SEED_WEIGHT * raw.seedStrength -
 		(raw.explored ? EXPLORE_COST : 0);
 
@@ -492,7 +596,46 @@ export function scoreSuggestion(
 		});
 	}
 
-	return { score, fit: verdict.fit, reasons };
+	return {
+		score,
+		fit: verdict.fit,
+		merit: verdict.merit,
+		...(verdict.rating === undefined ? {} : { rating: verdict.rating }),
+		reasons,
+	};
+}
+
+/**
+ * Extra weight on what the source thinks, for somebody who has said that is
+ * what they care about.
+ *
+ * A gate alone was not enough, and the arithmetic says why. A neighbour of a
+ * favourite carries `SEED_WEIGHT * strength` — up to half a point — before
+ * anything else is counted, where the whole spread between a mediocre title and
+ * an acclaimed one is `0.75 * merit`, about a sixth of a point. So the row is
+ * ordered by *where a suggestion came from* and barely at all by whether it is
+ * any good: a 6.3 that a favourite pointed at outscored an 8.3 by nearly three
+ * to one. That is defensible as a default — provenance really is the better
+ * predictor of whether you will like something — and indefensible for somebody
+ * who has just said, in as many words, that they want the good ones.
+ *
+ * Zero at the default and growing from there, on top of the fixed weight rather
+ * than in place of it: this is an adjustment to a ranking that works, not a
+ * different ranking.
+ *
+ * One-sided on purpose. Dragging the slider down means "do not keep these from
+ * me", which the gate already does by admitting them; it does not mean "prefer
+ * the worse ones", and a symmetric lean read it that way — it went negative and
+ * actively pushed the acclaimed end of somebody's own pool *down* the row.
+ * Nobody has ever wanted that. Below the default this is simply zero and the
+ * ordering is the one the model would have used anyway.
+ */
+const LEAN_PER_POINT = 3;
+
+export function qualityLean(
+	standard: number = SUGGESTION_STANDARD.default,
+): number {
+	return LEAN_PER_POINT * Math.max(0, standard - SUGGESTION_STANDARD.default);
 }
 
 export interface RankOptions {
@@ -506,6 +649,8 @@ export interface RankOptions {
 	shown?: Readonly<ShownLog>;
 	/** Things you have said yes to, for the "because you liked X" boost. */
 	anchors?: readonly Anchor[];
+	/** What the row is being held to — see `LibraryConfig.suggestionStandard`. */
+	standard?: number;
 	now?: Date;
 }
 
@@ -538,9 +683,20 @@ export const COOLDOWN_DAYS = 4;
  * Also what orders the tier from within: everything held back pays this, so when
  * the row has no choice but to come round, the thing you saw longest ago is the
  * thing that comes back first.
+ *
+ * That second job is why the charge is heavy and why it decays in a day rather
+ * than a working week. Half a point with a five-day half-life meant the spread
+ * between something you saw a minute ago and something you saw three days ago
+ * was under two tenths — nothing at all against a suggestion the model rates
+ * highly, so the come-round was ordered by score and served the same few
+ * favourites every press. Ordering by *when you last saw it* is the whole of
+ * what "it should be a while before that comes back" means, so it has to be
+ * worth more than being a good suggestion. Past the cooldown it is spent: four
+ * days out it is under a fifth of a point, which is the gentle nudge it always
+ * meant to be.
  */
-const SHOWN_PENALTY = 0.5;
-const SHOWN_HALF_LIFE_DAYS = 5;
+const SHOWN_PENALTY = 3;
+const SHOWN_HALF_LIFE_DAYS = 1;
 
 /**
  * How many of the row something you have already thumbed up may take.
@@ -552,6 +708,32 @@ const SHOWN_HALF_LIFE_DAYS = 5;
  * part you have *not* seen.
  */
 export const LIKED_SEATS = 2;
+
+/**
+ * How much of the row one genre may take.
+ *
+ * The diversity charge below was the only thing standing between a library
+ * with a favourite genre and a row made entirely of it, and a charge cannot do
+ * this job — the same argument `FillOptions.share` makes about the majority
+ * *kind*, and it is if anything stronger here. The dominant genre arrives with
+ * three separate advantages: its affinity is positive so every candidate
+ * carrying it scores higher, the seeds it is asked about are mostly of it, and
+ * the neighbours those seeds return corroborate each other so the agreement
+ * bonus lands on it too. Half a point per repeat is nothing against that, and
+ * the picks best placed to shrug it off are precisely the ones deepest in the
+ * favourite genre. Someone who mostly watches horror got seven horror films and
+ * no evidence the row knew they watched anything else.
+ *
+ * A cap rather than a ban, and a generous one: most of the row is still allowed
+ * to be the thing you mostly watch, because that is what you mostly watch. It
+ * is the difference between a row that leans and a row that has one idea.
+ *
+ * Counted per tag, so it binds on whatever a run of picks actually shares. A
+ * row of four horror films that are also four thrillers has spent both.
+ */
+export function subjectSeats(limit: number): number {
+	return Math.max(2, Math.ceil(limit / 2));
+}
 
 /** What already having said yes costs against something you have not seen. */
 const LIKED_COST = 0.35;
@@ -574,26 +756,25 @@ export function rankSuggestions(
 	options: RankOptions,
 ): Suggestion[] {
 	const now = options.now ?? new Date();
+	const standard = options.standard ?? SUGGESTION_STANDARD.default;
 	const scored: Suggestion[] = [];
 
 	for (const [key, raw] of pool.by) {
-		if (options.skipped?.has(key)) continue;
-		if (options.owned(raw.item)) continue;
-
-		// A dislike is permanent, "seen it" means it is dealt with, and a snooze
-		// holds until its date and then stops mattering on its own.
+		if (!considered(key, raw, options, now)) continue;
 		const verdict = activeVerdict(options.feedback[key], now);
-		if (verdict && verdict !== "liked") continue;
 
-		const { score, fit, reasons } = scoreSuggestion(
+		const { score, fit, merit, rating, reasons } = scoreSuggestion(
 			profile,
 			raw,
 			now,
 			options.anchors,
+			standard,
 		);
 		scored.push({
 			item: raw.item,
 			fit,
+			merit,
+			...(rating === undefined ? {} : { rating }),
 			score:
 				score -
 				shownPenalty(options.shown?.[key], now) -
@@ -606,7 +787,7 @@ export function rankSuggestions(
 	}
 
 	return fillSlots(
-		worthShowing(scored).map((at) => ({
+		worthShowing(scored, options.limit, standard).map((at) => ({
 			...at,
 			tags: at.item.tags,
 			// The kind itself rather than `kindFamily`: folding anime into
@@ -618,6 +799,10 @@ export function rankSuggestions(
 		options.limit,
 		{
 			held: (one) => one.held,
+			// The row's mix follows what you actually engage with, with a seat's
+			// worth of allowance for anything you engage with at all.
+			share: (family) => kindShare(profile, family as MediaKind),
+			subjectSeats: subjectSeats(options.limit),
 			quota: {
 				of: (one) => (one.verdict === "liked" ? "liked" : undefined),
 				max: LIKED_SEATS,
@@ -627,13 +812,17 @@ export function rankSuggestions(
 }
 
 /**
- * What the model thinks you will actively dislike, dropped rather than seated.
+ * What the model thinks you will actively dislike, dropped while it can afford
+ * to drop it.
  *
- * `fillSlots` fills every seat it is given from whatever it is handed, so a thin
- * pool put its worst three answers on screen beside its best four and the row
- * was judged on all seven. Six good suggestions is a better row than seven, and
- * a short row is a legible thing for a recommender to do — it says the sources
- * had little to offer today rather than pretending otherwise.
+ * A trim, not a truncation. This used to be willing to leave the row short on
+ * the reasoning that six good suggestions beat seven — which is true of six good
+ * ones and a bad one, and not true of the row it actually produced: a rail of
+ * two cards and five card-widths of nothing, which reads as broken rather than
+ * as discerning. So the floors take out what they can while a full row survives
+ * them, and the moment they cannot, the row is filled from the top of what is
+ * left. Something you would probably pass over is a worse suggestion than a good
+ * one and a better row than a gap.
  *
  * Measured on `fit` rather than on the total, and that is the whole of why it
  * works. A neighbour of a favourite carries `SEED_WEIGHT * strength` before
@@ -643,23 +832,97 @@ export function rankSuggestions(
  * is exactly the recommendation the floor exists to stop.
  *
  * A floor rather than a proportion, and a low one: this is meant to catch what
- * you have demonstrably avoided, not to trim the merely unremarkable. The punt
- * is exempt, because being outside the profile is the entire premise of the punt
- * and its card says so.
+ * you have demonstrably avoided, not to trim the merely unremarkable.
+ *
+ * The punt used to be exempt from it, on the reasoning that being outside the
+ * profile is the whole premise of the punt. That was the wrong reading of its
+ * own number: something genuinely outside the profile scores *zero* here, which
+ * clears the floor comfortably. The only picks the exemption ever rescued were
+ * the ones scoring below it — the ones actively against your taste — so a row
+ * that had learned you turn down musicals put one on screen every day and
+ * captioned it "branching out". Being unknown is a reason to show somebody
+ * something. Being disliked is not, and no label makes it one.
  */
 const FIT_FLOOR = -0.05;
-const KEEP_AT_LEAST = 3;
 
-function worthShowing(scored: readonly Suggestion[]): Suggestion[] {
-	const kept = scored.filter(
-		(at) => at.fit > FIT_FLOOR || at.strategy === "wildcard",
-	);
-	if (kept.length >= KEEP_AT_LEAST || kept.length === scored.length) return kept;
-	// Too little got through to make a row of it, so the floor stands down: an
-	// empty row teaches nobody anything, which is the same reason `discoverPlans`
-	// loosens its rating filter on a library it knows little about.
-	return [...scored].sort((a, b) => b.score - a.score).slice(0, KEEP_AT_LEAST);
+/**
+ * And what its own source makes of it, read against what you asked for.
+ *
+ * This used to be a floor on `merit` — points above the average thing the
+ * catalogue carries — sitting about a point below that average, with a bypass
+ * for anything the profile felt sure enough about. Two things were wrong with
+ * it the moment the standard became a setting. It was expressed in a unit
+ * nobody sets a preference in, so a stated 7.5 had to be translated into an
+ * offset, and the translation carried a point and a quarter of slack: the row
+ * served 6.3s to somebody who had asked for 7.5s, which is worse than having no
+ * setting at all, because a setting is a promise. And the bypass let a high fit
+ * override the number outright — so the suggestions best placed to ignore the
+ * standard were the ones the row was most enthusiastic about, which are exactly
+ * the ones filling it.
+ *
+ * So it is read against `rating` instead: the source's own score out of ten,
+ * shrunk for a thin vote count. The number on the setting, the number on the
+ * card, and the number a person means. No bypass. What keeps the row from
+ * emptying is the stand-down below, which was always the honest mechanism for
+ * that.
+ *
+ * A candidate the source gave no score at all is let through. Unknown is not
+ * bad — the same rule the trait model runs on — and on catalogues where half
+ * the entries carry no score, gating on silence would filter by paperwork.
+ */
+function meetsStandard(at: Suggestion, standard: number): boolean {
+	return at.rating === undefined || at.rating >= standard;
 }
+
+function worthShowing(
+	scored: readonly Suggestion[],
+	limit: number,
+	standard: number,
+): Suggestion[] {
+	const kept = scored.filter(
+		(at) => at.fit > FIT_FLOOR && meetsStandard(at, standard),
+	);
+	if (kept.length >= limit || kept.length === scored.length) return kept;
+	// Not enough got through to make a row of it, so the floors stand down as far
+	// as they have to and no further: everything that cleared them, then the best
+	// of what did not. Same reasoning as `discoverPlans` loosening its rating
+	// filter on a library it knows little about.
+	// Spread rather than sorted, and that is the whole of why the slate helps.
+	// Ordering the also-rans by score hands back the same lopsidedness that made
+	// them also-rans: score leans on provenance, provenance is your favourite
+	// genre, so the fallback slate was seven neighbours of one film and the caps
+	// had nothing to prefer over them. `rankDiverse` picks the best of each
+	// subject in turn, so what reaches `fillSlots` is the better end of the pool
+	// *and* a cross-section of it.
+	const rest = scored.filter((at) => !kept.includes(at));
+	return [
+		...kept,
+		...rankDiverse(
+			rest,
+			(at) => ({ score: at.score, tags: at.item.tags, family: at.item.ref.kind }),
+			limit * SLATE - kept.length,
+		),
+	];
+}
+
+/**
+ * How many candidates a row of `limit` is chosen from when the floors give way.
+ *
+ * Topping up to exactly `limit` was the obvious reading of "enough to fill the
+ * row" and the wrong one, because filling the row is not the same job as
+ * choosing what goes in it. Handing `fillSlots` exactly seven candidates leaves
+ * it nothing to choose *between*: the strategy budget, the kind allowance and
+ * the subject cap all work by preferring one candidate over another, and with
+ * no alternatives every one of them stands down in turn and takes what it is
+ * given. Which is ordered by score, and score leans on provenance — so somebody
+ * who set the standard higher than their pool could meet got a row of seven
+ * neighbours of one favourite, all of the same genre. The strictest setting
+ * produced the least varied row, which is precisely backwards.
+ *
+ * Three rows' worth is enough for the caps to bind and still narrow enough that
+ * the row is drawn from the better end of what there is.
+ */
+const SLATE = 3;
 
 /**
  * Who gets a guaranteed seat in the row of seven.
@@ -702,6 +965,30 @@ export interface FillOptions<T> {
 	 */
 	kindPenalty?: number;
 	/**
+	 * How much of the row each kind has earned, 0–1, summing to about one.
+	 *
+	 * A flat charge per thing of the same kind already placed was the same rule
+	 * for a library that is nine-tenths film and one that is evenly split, and it
+	 * was wrong for both: it fought the majority kind down out of seats it had
+	 * fairly earned, and did nothing to guarantee the small ones any. So the mix
+	 * is drawn from what you actually engage with — five films and a show and a
+	 * book, rather than four and four and four — and each kind gets that many
+	 * seats free of charge before the charge starts.
+	 *
+	 * The rounding is deliberately generous at the bottom: a kind that has earned
+	 * a third of a seat is allowed one, which is what "still suggest some of
+	 * everything" means arithmetically. It is an allowance and not a reservation
+	 * — nothing is held open for a kind that has nothing worth showing.
+	 */
+	share?: (family: string) => number;
+	/**
+	 * The most of the row any one subject may take — see `subjectSeats`.
+	 *
+	 * Stands down with the rest of the mix when nothing else will fill a seat,
+	 * because a row short of a card is worse than a row leaning on one genre.
+	 */
+	subjectSeats?: number;
+	/**
 	 * Shown to you recently — see `COOLDOWN_DAYS`.
 	 *
 	 * Not a penalty and not a filter. Held-back picks are simply not considered
@@ -727,7 +1014,8 @@ export interface FillOptions<T> {
  * full as the pool allows. Every pick, budgeted or not, still pays the
  * diversity penalty against what is already placed, so guaranteeing the
  * franchise strategy a seat does not mean guaranteeing three films of one
- * series.
+ * series — and no budgeted seat is exempt from the subject cap, which is the
+ * one rule the favourite genre could otherwise buy its way past.
  */
 export function fillSlots<
 	T extends {
@@ -741,6 +1029,7 @@ export function fillSlots<
 	const slots = options.slots ?? SLOTS;
 	const penalty = options.penalty ?? 0.55;
 	const kindPenalty = options.kindPenalty ?? 0.3;
+	const subjects = options.subjectSeats ?? limit;
 	const quota = options.quota;
 	const holding = options.held;
 	// Whether holding anything back can achieve anything — see `FillOptions.held`.
@@ -754,14 +1043,57 @@ export function fillSlots<
 	const families = new Map<string, number>();
 	const spent = new Map<string, number>();
 
-	const take = (only: StrategyId | undefined, repeats: boolean): boolean => {
+	// One seat for anything the profile knows at all, and its fair share of the
+	// rest. Worked out once: `share` walks a map, and this is inside the loop
+	// that picks every seat.
+	const allowances = new Map<string, number>();
+	const allowance = (family: string): number => {
+		const known = allowances.get(family);
+		if (known !== undefined) return known;
+		const share = options.share;
+		// Never the whole row, however lopsided the library: a shelf that is
+		// nine-tenths film has earned most of the row and not all of it, and that
+		// last seat is what "some of everything" comes down to on a library like
+		// that — it costs the majority kind its seventh-best answer.
+		//
+		// And no cap at all without a mix to go by, leaving only the gentle charge
+		// below. A caller that has not said what the library is made of has not
+		// said anything this could be fair about.
+		const seats = share
+			? Math.min(limit - 1, Math.max(1, Math.round(share(family) * limit)))
+			: limit;
+		allowances.set(family, seats);
+		return seats;
+	};
+
+	const take = (
+		only: StrategyId | undefined,
+		repeats: boolean,
+		mixed = true,
+		capped = true,
+	): boolean => {
 		let bestAt = -1;
 		let best = -Infinity;
 		for (let at = 0; at < pool.length; at++) {
 			const one = pool[at];
 			if (!one || (only && one.strategy !== only)) continue;
 			if (!repeats && stale(one)) continue;
-			if (quota) {
+			// Its kind has had what it earned, and something else has not. A
+			// charge cannot do this job: the majority kind arrives with a
+			// standing advantage — it is the kind the profile is mostly built
+			// from, so it scores higher and `kindShare` pays it again — and any
+			// charge small enough to be fair to a near-miss is small enough for
+			// the seventh film to shrug off. Lifted below when nothing else will
+			// take the seat, because a kind with nothing to say does not get to
+			// hold a seat empty.
+			if (
+				mixed &&
+				one.family &&
+				(families.get(one.family) ?? 0) >= allowance(one.family)
+			) {
+				continue;
+			}
+			if (quota && capped) {
 				const group = quota.of(one);
 				if (group && (spent.get(group) ?? 0) >= quota.max) continue;
 			}
@@ -769,6 +1101,11 @@ export function fillSlots<
 				(most, tag) => Math.max(most, used.get(tag.trim().toLowerCase()) ?? 0),
 				0,
 			);
+			// Something it is about has had its share of the row — see
+			// `subjectSeats`. Checked here rather than charged below for the same
+			// reason the kind allowance is: the charge is what the favourite genre
+			// is best able to pay.
+			if (mixed && seen >= subjects) continue;
 			const alike = one.family ? (families.get(one.family) ?? 0) : 0;
 			const adjusted = one.score - seen * penalty - alike * kindPenalty;
 			if (adjusted > best) {
@@ -797,23 +1134,65 @@ export function fillSlots<
 			take(slot.strategy, false);
 		}
 	}
-	// The donated seats, and any spare. Anything held back is offered the seat
-	// only once nothing fresh will take it.
+	// The donated seats, and any spare. In order of what is worth giving up
+	// first: something you have not seen matters more than the mix, and the mix
+	// matters more than filling the row with what you have already been shown.
 	while (
 		out.length < limit &&
-		(take(undefined, false) || take(undefined, true))
+		(take(undefined, false) ||
+			take(undefined, false, false) ||
+			take(undefined, true) ||
+			take(undefined, true, false) ||
+			// And the quota last of all. Every other rule here stands down rather
+			// than leave a seat empty, and this one did not: a row whose pool is
+			// mostly things you have thumbed up seated two of them and then went
+			// short — and a short row is what makes the press come round to what
+			// you have already seen. Capping how much of the row is a reading list
+			// is worth doing while there is something else to put there.
+			take(undefined, true, false, false))
 	) {
 		/* keeps going until the pool or the limit runs out */
 	}
 	return out;
 }
 
+/**
+ * Whether this one is a candidate at all, before anything is scored.
+ *
+ * A dislike is permanent, "seen it" means it is dealt with, and a snooze holds
+ * until its date and then stops mattering on its own. Owned is the same idea
+ * arrived at from the vault instead of a button — and adding a suggestion is
+ * also recorded as a like, so the row learns from it either way.
+ */
+function considered(
+	key: string,
+	raw: RawSuggestion,
+	options: Pick<RankOptions, "owned" | "feedback" | "skipped">,
+	now: Date,
+): boolean {
+	if (options.skipped?.has(key)) return false;
+	if (options.owned(raw.item)) return false;
+	const verdict = activeVerdict(options.feedback[key], now);
+	return !verdict || verdict === "liked";
+}
+
+/* Counting the pool was how the row used to decide whether to go and ask the
+   sources for more, and `freshCandidates` was that count: eligible candidates
+   not stood aside and not shown to you lately. It is gone because the number was
+   never the one that mattered. A pool can hold forty candidates the row cannot
+   *seat* — a quota spent, a kind that has had its share of the seven — so the
+   count said "plenty left, no need to ask" while the row it drew came up short
+   and filled the gap with what you had already seen. Two measures that could
+   disagree, and the disagreement was the cycling. The engine asks the only
+   question with one answer: of the row I am about to draw, how much of it has
+   this person not seen? See `SuggestionEngine.unseen`. */
+
 function daysSince(at: number, now: Date): number {
 	return Math.max(0, (now.getTime() - at) / (24 * 60 * 60 * 1000));
 }
 
 /** Drawn recently enough that drawing it again would be a repeat. */
-function heldBack(at: number | undefined, now: Date): boolean {
+export function heldBack(at: number | undefined, now: Date): boolean {
 	return at !== undefined && daysSince(at, now) < COOLDOWN_DAYS;
 }
 

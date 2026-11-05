@@ -2,10 +2,9 @@
 	"id": "scout",
 	"name": "Scout",
 	"version": "1.0.0",
-	"minAppVersion": "0.15.0",
-	"description": "Fetch metadata from movies, TV, music, books, and web links into your notes",
+	"minAppVersion": "1.11.4",
+	"description": "Track movies, TV, books, anime, and manga in your notes, with metadata from TMDB, Open Library, AniList, and web links.",
 	"author": "DefineDoddy",
-	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
+	"authorUrl": "https://github.com/DefineDoddy",
 	"isDesktopOnly": false
 }

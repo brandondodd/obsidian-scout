@@ -8,7 +8,7 @@ export const sourcesSection: SettingsSection = {
 	id: "sources",
 	label: "Sources",
 	icon: "globe",
-	intro: "Where metadata comes from. Scout only contacts a source when you search or resolve a link.",
+	intro: "Where metadata comes from. Sources are contacted when you search or resolve a link, and by any job turned on under Background.",
 
 	render(container, { app, settings, registry, rerender }) {
 		for (const provider of registry.all()) {

@@ -1,4 +1,4 @@
-import type { MediaItem, MediaKind } from "../types";
+import { MEDIA_KIND_PLURALS, type MediaItem, type MediaKind } from "../types";
 import {
 	ratingFraction,
 	ratingScaleFor,
@@ -163,6 +163,8 @@ export interface TasteProfile {
 	/** The spelling to show for each, since the key has folded the case away. */
 	labels: Map<TraitKey, string>;
 	kinds: Map<MediaKind, KindStat>;
+	/** When, per kind, the things you go for came out — see `EraStat`. */
+	eras: Map<MediaKind, EraStat>;
 	/** How many entries carried an opinion at all. Below a handful, be humble. */
 	sampled: number;
 	/** How many of those came from thumbs on suggestions rather than from notes. */
@@ -181,6 +183,37 @@ export interface KindStat {
 	owned: number;
 	engaged: number;
 }
+
+/**
+ * The years you actually go to, for one kind.
+ *
+ * Per kind because it is not one preference. Somebody who watches this year's
+ * television and reads novels from the seventies is not inconsistent; they have
+ * two habits, and a model with one era for the whole library splits the
+ * difference and gets both wrong. It is also the reason this is not simply the
+ * `decade:` trait, which is one bucket, shared across kinds, and says nothing
+ * about 2019 to somebody who likes the 2020s.
+ *
+ * `spread` is a weighted standard deviation with a floor under it: three films
+ * from one year is not evidence that you will only watch that year.
+ */
+export interface EraStat {
+	/** The year your taste is centred on, weighted towards what you liked. */
+	middle: number;
+	/** How far either side of it counts as "about right". */
+	spread: number;
+	/** Titles this was learned from. Below `ERA_EVIDENCE` it is not used. */
+	count: number;
+}
+
+/** How many dated titles of a kind before its era is believed at all. */
+const ERA_EVIDENCE = 5;
+
+/** The narrowest a taste in years is allowed to be. */
+const ERA_MIN_SPREAD = 8;
+
+/** What being of the right era, or plainly the wrong one, is worth. */
+const ERA_WEIGHT = 0.22;
 
 export interface Affinity {
 	/** Roughly −0.5…+0.5. Positive means you like it more than you like things. */
@@ -390,6 +423,32 @@ export function buildTaste(
 		if (at) at.engaged += 1;
 	}
 
+	// When the things you go for came out, per kind. Weighted by how much you
+	// liked each one as well as by how recently it mattered, so a shelf of
+	// classics you were lukewarm about does not outvote the four modern things
+	// you loved.
+	const years = new Map<MediaKind, { at: number; weight: number }[]>();
+	for (const { entry, value, weight } of signals) {
+		if (!entry.year || !Number.isFinite(entry.year)) continue;
+		const row = years.get(entry.kind) ?? [];
+		row.push({ at: entry.year, weight: weight * Math.max(0.1, value) });
+		years.set(entry.kind, row);
+	}
+	const eras = new Map<MediaKind, EraStat>();
+	for (const [kind, row] of years) {
+		const total = row.reduce((sum, one) => sum + one.weight, 0);
+		if (total <= 0) continue;
+		const middle = row.reduce((sum, one) => sum + one.at * one.weight, 0) / total;
+		const variance =
+			row.reduce((sum, one) => sum + one.weight * (one.at - middle) ** 2, 0) /
+			total;
+		eras.set(kind, {
+			middle,
+			spread: Math.max(ERA_MIN_SPREAD, Math.sqrt(variance)),
+			count: row.length,
+		});
+	}
+
 	// Each namespace shrinks against its own prior: a director needs less
 	// corroboration than a genre before the model believes the pattern.
 	const traits = new Map<TraitKey, Affinity>();
@@ -408,6 +467,7 @@ export function buildTaste(
 		traits,
 		labels,
 		kinds,
+		eras,
 		sampled: signals.length,
 		trained,
 	};
@@ -521,19 +581,20 @@ function recognition(profile: TasteProfile, traits: readonly Trait[]): number {
  * Returns a number centred on zero — positive means better than the average
  * thing that source carries.
  */
-function quality(candidate: Candidate): number {
+function quality(candidate: Candidate): { merit: number; rating?: number } {
 	const score = candidate.sourceRating;
-	if (score === undefined || score <= 0) return 0;
+	if (score === undefined || score <= 0) return { merit: 0 };
 	const prior =
 		(candidate.providerId ? QUALITY_PRIOR[candidate.providerId] : undefined) ??
 		DEFAULT_QUALITY_PRIOR;
 	// With no count there is nothing to shrink towards; taking the score at
 	// face value is what the sources without vote counts deserve.
 	const votes = candidate.ratingCount;
-	if (votes === undefined) return score / 10 - prior.average / 10;
 	const shrunk =
-		(votes * score + prior.votes * prior.average) / (votes + prior.votes);
-	return shrunk / 10 - prior.average / 10;
+		votes === undefined
+			? score
+			: (votes * score + prior.votes * prior.average) / (votes + prior.votes);
+	return { merit: shrunk / 10 - prior.average / 10, rating: shrunk };
 }
 
 export interface Verdict {
@@ -549,6 +610,26 @@ export interface Verdict {
 	 * before" loudly enough to be worth acting on.
 	 */
 	fit: number;
+	/**
+	 * How good the thing is by its source's own reckoning, centred on zero.
+	 *
+	 * Positive is better than the average title that source carries; −0.1 is a
+	 * point below it. Separated out for the same reason `fit` is: the row wants
+	 * to be able to say "this is not very good, and you are not so obviously
+	 * going to love it that it is worth showing you anyway", and that sentence
+	 * needs both halves as numbers.
+	 */
+	merit: number;
+	/**
+	 * The same number before it was centred: a score out of ten, shrunk.
+	 *
+	 * `merit` answers "better or worse than the average thing this catalogue
+	 * carries", which is the right question for ranking and the wrong one for a
+	 * person who has said what they want out of ten. Nobody sets a preference in
+	 * units of "points above TMDB's mean". Undefined when the source gave no
+	 * score, which is not the same as a bad one.
+	 */
+	rating?: number;
 	/** Why, in the order that mattered. Empty when nothing in it was familiar. */
 	reasons: Reason[];
 }
@@ -657,6 +738,31 @@ export function topTraits(
 }
 
 /**
+ * How well a candidate's year sits with when you go for that kind of thing.
+ *
+ * Returns nothing at all — not zero-with-a-shrug, but no opinion — until there
+ * is enough of the kind to have a habit, and for a candidate with no year:
+ * not knowing when something came out is not the same as it being the wrong
+ * age, and a source that omits the year should not be punished for it.
+ *
+ * Signed, and that is the point. Positive inside the spread, through zero at one
+ * spread out, negative beyond it. A reader of new releases gets told about new
+ * releases; a reader of the seventies stops being sent this year's paperbacks,
+ * and neither preference has to be declared anywhere.
+ */
+export function eraFit(
+	profile: TasteProfile,
+	kind: MediaKind,
+	year: number | undefined,
+): { score: number; away: number } | null {
+	if (!year || !Number.isFinite(year)) return null;
+	const era = profile.eras.get(kind);
+	if (!era || era.count < ERA_EVIDENCE) return null;
+	const away = Math.abs(year - era.middle) / era.spread;
+	return { score: ERA_WEIGHT * Math.max(-1, 1 - away), away };
+}
+
+/**
  * How much of what you actually engage with is this kind.
  *
  * Measured against what you have opinions about, not against what is on the
@@ -732,7 +838,7 @@ export function scoreCandidate(
 		for (const one of row) familiar += weight * one.score;
 	}
 
-	const merit = quality(candidate);
+	const { merit, rating } = quality(candidate);
 	const share = kindShare(profile, candidate.kind);
 	const known = recognition(profile, traits);
 	const stranger =
@@ -745,7 +851,18 @@ export function scoreCandidate(
 	const age = candidate.year ? now.getFullYear() - candidate.year : null;
 	const freshness = age === null ? 0 : age <= 3 ? 0.05 : age > 25 ? -0.03 : 0;
 
-	const score = familiar + 0.75 * merit + 0.35 * share + freshness + stranger;
+	// And when you go for this sort of thing, which the row could not see at all
+	// before: a library of nothing but recent television was as happy to be sent
+	// something from 1974 as from last year.
+	const era = eraFit(profile, candidate.kind, candidate.year);
+
+	const score =
+		familiar +
+		0.75 * merit +
+		0.35 * share +
+		freshness +
+		(era?.score ?? 0) +
+		stranger;
 
 	// Every trait that had something to say, for and against. Which of them a
 	// card has room for is `rankReasons`' problem, not this function's — and
@@ -772,8 +889,36 @@ export function scoreCandidate(
 			strength: Math.min(1, merit * 3),
 		});
 	}
+	// Only worth saying either way when it is actually saying something: within
+	// half a spread is "about when you usually go", which is not news.
+	if (era && candidate.year && era.away < 0.5) {
+		reasons.push({
+			kind: "fresh",
+			label: `From when you usually go for ${MEDIA_KIND_PLURALS[
+				candidate.kind
+			].toLowerCase()}`,
+			short: "Your sort of era",
+			strength: 0.35,
+		});
+	} else if (era && candidate.year && era.away > 1.6) {
+		const older = candidate.year < (profile.eras.get(candidate.kind)?.middle ?? 0);
+		reasons.push({
+			kind: "fresh",
+			label: older
+				? "Older than you usually go for"
+				: "Newer than you usually go for",
+			strength: 0.4,
+			against: true as const,
+		});
+	}
 
-	return { score, fit: familiar, reasons };
+	return {
+		score,
+		fit: familiar,
+		merit,
+		...(rating === undefined ? {} : { rating }),
+		reasons,
+	};
 }
 
 /** A candidate straight off a library note. */

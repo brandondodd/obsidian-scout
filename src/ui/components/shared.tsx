@@ -141,6 +141,9 @@ export function Cover({
 			alt={alt}
 			draggable={false}
 			loading="lazy"
+			// Decoded off the main thread, so a shelf being scrolled into view
+			// does not pay for its covers in dropped frames.
+			decoding="async"
 			onError={() => setFailed(true)}
 		/>
 	);

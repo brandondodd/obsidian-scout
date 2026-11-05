@@ -6,6 +6,7 @@ import type { LibraryEntry } from "../../core/library/entry";
 import { isDetailable } from "../../core/provider";
 import { releaseLine } from "../../core/library/release";
 import { rankReasons, reasonIcon, type Reason } from "../../core/library/reasons";
+import { feedbackKey, recordFor } from "../../core/library/feedback";
 import {
 	MEDIA_KIND_LABELS,
 	type MediaItem,
@@ -230,6 +231,16 @@ export default function ItemDetail({
 		const controller = new AbortController();
 		try {
 			await ctx.factory.create(shown, controller.signal);
+			// Adding a suggestion counts as a yes, whichever button was pressed —
+			// the one on the card and the one in here are the same act, and only
+			// the row would have known the difference. `reasons` is what says this
+			// dialog was opened from a suggestion rather than from the library.
+			if (reasons && reasons.length > 0) {
+				const key = feedbackKey(shown.ref);
+				if (ctx.settings.feedback()[key]?.verdict !== "liked") {
+					ctx.settings.setFeedback(key, recordFor(shown, "liked"));
+				}
+			}
 		} catch (err) {
 			new Notice(
 				`Could not create the note: ${

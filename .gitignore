@@ -17,6 +17,13 @@ main.js
 
 # obsidian
 data.json
+cache.json
+
+# Release artifacts mirrored by `pnpm build`; attach them to a GitHub release instead.
+dist/
+
+# Local dev settings (see README "Development")
+.env
 
 # Exclude macOS Finder (System Explorer) View States
 .DS_Store

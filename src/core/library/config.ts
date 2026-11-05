@@ -399,6 +399,26 @@ export const LAYOUT_LABELS: Record<LibraryLayout, string> = {
 
 export type RatingIcon = "star" | "heart" | "circle" | "number";
 
+/**
+ * The range `suggestionStandard` may be set to, and where it sits by default.
+ *
+ * Stated in source points because that is the only unit anybody has an
+ * intuition for: 6.5 is roughly what an average title scores on the catalogues
+ * Scout asks, 7.0 is the well-liked mainstream, and 8.0 is the acclaimed end
+ * that fills a top-250 list. Below 5.5 there is nothing left to filter and
+ * above 8.5 there is nothing left to suggest, so the ends stop where the
+ * setting stops meaning anything.
+ *
+ * The default is where the row has always been: ask for a little above average
+ * and let the half that comes from your own shelf through on its own merits.
+ */
+export const SUGGESTION_STANDARD = {
+	min: 5.5,
+	max: 8.5,
+	step: 0.1,
+	default: 6.8,
+} as const;
+
 export interface LibraryConfig {
 	/** Whole vault, or only the folders notes are created in. */
 	scope: "vault" | "folders";
@@ -444,6 +464,34 @@ export interface LibraryConfig {
 	enrichSuggestions: boolean;
 	/** Most titles to read up on in one run. One request each. */
 	enrichBudget: number;
+
+	/**
+	 * The standard a suggestion is held to, out of ten, on its source's scale.
+	 *
+	 * Everything else the row decides is about *you* — this is the one axis that
+	 * is not, and people differ on it more than they differ on genre. Somebody
+	 * who wants a shortlist of the acclaimed and somebody who wants the row to
+	 * turn up the odd disreputable gem are both asking it to work properly, and
+	 * no amount of watching will teach it which they are: both of them rate what
+	 * they finished highly, because both of them chose what to watch. It is the
+	 * one thing the model cannot infer and therefore the one thing worth asking.
+	 *
+	 * Read against the source's own score out of ten, shrunk for a thin vote
+	 * count — the number on the slider, the number on the card, and the number a
+	 * person means when they say "seven and up". It is what the catalogues are
+	 * asked for and what the row will accept, deliberately the same number: an
+	 * earlier version translated it into an offset with a point of slack in it,
+	 * and a row set to 7.5 that serves 6.3s is worse than no setting at all,
+	 * because a setting is a promise.
+	 *
+	 * It also leans the ranking — see `qualityLean` — because filtering alone
+	 * left the row ordered by where a suggestion came from rather than by
+	 * whether it is any good.
+	 *
+	 * Nothing here can leave the row short. When too little clears the bar the
+	 * floors give way and the row is filled from the best of the rest.
+	 */
+	suggestionStandard: number;
 
 	/** Top of the rating range: 5, 10, or 100. */
 	ratingScale: number;
@@ -505,8 +553,9 @@ export function defaultLibraryConfig(): LibraryConfig {
 
 		autoRefresh: true,
 		refreshBudget: 20,
-		enrichSuggestions: true,
+		enrichSuggestions: false,
 		enrichBudget: 15,
+		suggestionStandard: SUGGESTION_STANDARD.default,
 
 		ratingScale: 5,
 		ratingScales: {},
@@ -547,8 +596,20 @@ export function normalizeLibraryConfig(
 		statuses: { ...base.statuses, ...stored.statuses },
 		ratingScale: validScale(stored.ratingScale) ?? base.ratingScale,
 		ratingScales: cleanScales(stored.ratingScales),
+		// Clamped where the other numbers are not, because this one is passed
+		// through to a catalogue as a filter: a hand-edited 50 asks every source
+		// for nothing at all and reads as the row being broken.
+		suggestionStandard: validStandard(stored.suggestionStandard) ?? base.suggestionStandard,
 		customFields: stored.customFields ?? [],
 	};
+}
+
+function validStandard(value: unknown): number | undefined {
+	if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+	return Math.min(
+		SUGGESTION_STANDARD.max,
+		Math.max(SUGGESTION_STANDARD.min, value),
+	);
 }
 
 /** Discards overrides for kinds that no longer exist, and unusable scales. */

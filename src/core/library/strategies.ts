@@ -1,10 +1,15 @@
 import type { DiscoverQuery, TermRef } from "../provider";
 import { sourceKey, type MediaKind, type MediaRef } from "../types";
+import { SUGGESTION_STANDARD } from "./config";
 import type { EnrichmentCache } from "./enrich";
 import type { LibraryEntry } from "./entry";
 import {
+	DISCOVER_PAGES,
 	discoverPlans,
 	kindWeight,
+	UNSURE_RELIEF,
+	WILDCARD_PREMIUM,
+	wrap,
 	type Origin,
 	type StrategyId,
 } from "./recommend";
@@ -70,30 +75,29 @@ export interface PlanInput {
 	liked?: readonly { ref: MediaRef; title: string }[];
 	/** What the sources have said, for the keyword and person strategies. */
 	enrichment?: Readonly<EnrichmentCache>;
+	/**
+	 * How good a thing has to be to be worth asking for — see
+	 * `LibraryConfig.suggestionStandard`.
+	 *
+	 * Every strategy that browses a catalogue rather than following one of your
+	 * titles carries it, each keeping the gap it has always run at: the keyword
+	 * search casts a little wider because a keyword is already a narrow filter,
+	 * and the punt asks for a little more because it is spending the one seat
+	 * that is not about you.
+	 */
+	standard?: number;
 }
 
 /** How much a thing you liked the look of is worth against one you watched. */
 const LIKED_STRENGTH = 0.7;
 
-/**
- * The `round`th window of `size` items, coming round again at the end.
- *
- * Wrapping rather than running off the end is what lets "show me others" be
- * pressed indefinitely. Slicing meant the fifth press asked about seeds
- * twenty-one to twenty-four of a list of eighteen — that is, about nothing — and
- * the row simply stopped having anything to say. Coming round to the start asks
- * a question already asked, which the day-long HTTP cache answers for free, and
- * the pool it lands in has moved on: the seven things on screen have been stood
- * aside, so the same answers produce a different row.
- */
-function wrap<T>(all: readonly T[], round: number, size: number): T[] {
-	if (all.length === 0) return [];
-	const start = (round * size) % all.length;
-	return [...all, ...all].slice(start, start + Math.min(size, all.length));
-}
-
 /** A director needs this many titles before it is worth going looking. */
 const DIRECTOR_EVIDENCE = 2;
+
+/** The standard this round is being planned against — see `PlanInput`. */
+function standardOf(input: PlanInput): number {
+	return input.standard ?? SUGGESTION_STANDARD.default;
+}
 
 /**
  * Neighbours of your own titles, and whatever the catalogue has plenty of
@@ -156,7 +160,7 @@ export function planRound(input: PlanInput, round: number): Request[] {
 	for (const request of keywordPlans(input, round)) push(request);
 	for (const request of personPlans(input, round)) push(request);
 
-	for (const plan of discoverPlans(profile, round, kinds)) {
+	for (const plan of discoverPlans(profile, round, kinds, input.standard)) {
 		for (const providerId of facts.discoverable(plan.kind)) {
 			push({
 				id: `discover:${providerId}:${plan.kind}:${plan.page}`,
@@ -282,8 +286,10 @@ function keywordPlans(input: PlanInput, round: number): Request[] {
 					kind,
 					keywords: terms,
 					withoutKeywords: termsFor(input, avoid.map((one) => one.label)),
-					minRating: 6.4,
-					page: 1 + Math.floor(round / 2),
+					minRating: standardOf(input) - UNSURE_RELIEF,
+					// Wrapped, like every other page in a round: the round carries
+					// a rotation now, and page forty-six does not exist.
+					page: (Math.floor(round / 2) % DISCOVER_PAGES) + 1,
 				},
 				origin: {
 					strategy: "keyword",
@@ -343,10 +349,22 @@ function personPlans(input: PlanInput, round: number): Request[] {
  * reads as it being generous.
  */
 function wildcardPlans(input: PlanInput, round: number): Request[] {
-	const known = new Set(
-		topTraits(input.profile, "genre", 40).map((one) => one.label.toLowerCase()),
+	// Both ends of the list, and the second end is the one that was missing.
+	// `topTraits(…, "liked")` returns only what scores *above* your average, so
+	// every genre you have actively turned down looked to this like a door you
+	// had never opened — and the row went looking for the very genres its own
+	// panel lists under "steering away from", then labelled them "branching out
+	// — you have little Musical". A wall is not a door because you have never
+	// gone through it.
+	const opinion = new Set(
+		[
+			...topTraits(input.profile, "genre", 40),
+			...topTraits(input.profile, "genre", 40, "disliked"),
+		].map((one) => one.label.toLowerCase()),
 	);
-	const stranger = WILDCARD_GENRES.filter((name) => !known.has(name.toLowerCase()));
+	const stranger = WILDCARD_GENRES.filter(
+		(name) => !opinion.has(name.toLowerCase()),
+	);
 	const pick = stranger[round % Math.max(1, stranger.length)];
 	if (!pick) return [];
 
@@ -359,7 +377,12 @@ function wildcardPlans(input: PlanInput, round: number): Request[] {
 			id: `wildcard:${providerId}:${kind}:${pick}`,
 			op: "discover",
 			providerId,
-			query: { kind, genres: [pick], minRating: 7.2, sort: "rated" },
+			query: {
+				kind,
+				genres: [pick],
+				minRating: standardOf(input) + WILDCARD_PREMIUM,
+				sort: "rated",
+			},
 			origin: { strategy: "wildcard", label: pick },
 		});
 	}

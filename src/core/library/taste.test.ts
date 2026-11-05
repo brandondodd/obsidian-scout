@@ -5,6 +5,7 @@ import {
 	buildTaste,
 	candidateOf,
 	entrySignal,
+	eraFit,
 	kindShare,
 	rankDiverse,
 	scoreCandidate,
@@ -261,6 +262,66 @@ describe("buildTaste", () => {
 		expect(
 			scoreCandidate(empty, { kind: "movie", tags: [], people: [] }).score,
 		).toBeCloseTo(0, 5);
+	});
+});
+
+/**
+ * Per kind, and that is the whole of why it is not the `decade:` trait.
+ *
+ * Somebody who watches this year's television and reads novels from the
+ * seventies is not inconsistent — they have two habits, and one era for the
+ * whole library splits the difference and gets both wrong.
+ */
+describe("when you go for things", () => {
+	const era = () => {
+		const shows = Array.from({ length: 6 }, (_, at) =>
+			entry({ kind: "tv", year: 2020 + (at % 4), rating: 9, status: "Watched" }),
+		);
+		const books = Array.from({ length: 6 }, (_, at) =>
+			entry({ kind: "book", year: 1970 + (at % 6), rating: 9, status: "Watched" }),
+		);
+		return buildTaste(config, [...shows, ...books], NOW);
+	};
+
+	it("prefers a new show and an old book, from the same library", () => {
+		const profile = era();
+		const one = (kind: "tv" | "book", year: number) =>
+			scoreCandidate(profile, { kind, tags: [], people: [], year }).score;
+		expect(one("tv", 2022)).toBeGreaterThan(one("tv", 1974));
+		expect(one("book", 1974)).toBeGreaterThan(one("book", 2022));
+	});
+
+	it("says so, on the card and against it", () => {
+		const profile = era();
+		const right = scoreCandidate(profile, {
+			kind: "tv",
+			tags: [],
+			people: [],
+			year: 2021,
+		});
+		const wrong = scoreCandidate(profile, {
+			kind: "tv",
+			tags: [],
+			people: [],
+			year: 1968,
+		});
+		expect(right.reasons.some((one) => one.kind === "fresh" && !one.against)).toBe(
+			true,
+		);
+		expect(wrong.reasons.some((one) => one.kind === "fresh" && one.against)).toBe(
+			true,
+		);
+	});
+
+	it("has no opinion about a kind it has barely seen", () => {
+		const thin = buildTaste(
+			config,
+			[entry({ kind: "book", year: 1970, rating: 9, status: "Read" })],
+			NOW,
+		);
+		expect(eraFit(thin, "book", 2024)).toBeNull();
+		// Nor about something whose year nobody knows.
+		expect(eraFit(era(), "tv", undefined)).toBeNull();
 	});
 });
 

@@ -1,15 +1,9 @@
 import { Setting } from "obsidian";
-import {
-	statusesFor,
-	type LibraryGroupBy,
-	type LibraryLayout,
-	type LibrarySort,
-	type RatingIcon,
-} from "../../library/config";
-import { ALL_MEDIA_KINDS, MEDIA_KIND_LABELS } from "../../types";
+import { statusesFor, type RatingIcon } from "../../library/config";
+import { MEDIA_KIND_LABELS } from "../../types";
 import { findMissingSourceIds } from "../../../ui/linkNotes";
-import { refreshLibrary } from "../../../ui/refreshNotes";
 import { addDropdown, addSlider, addText, addToggle } from "../controls";
+import { kindsInUse } from "./kinds";
 import type { SettingsSection } from "./types";
 
 const SCALE_OPTIONS: Record<string, string> = {
@@ -23,11 +17,12 @@ export const librarySection: SettingsSection = {
 	id: "library",
 	label: "Library",
 	icon: "library-big",
-	intro: "The library lists notes that are already in your vault. Nothing is stored outside the notes themselves.",
+	intro: "The library lists notes already in your vault, read straight from their frontmatter.",
 
 	render(container, ctx) {
-		const { settings, library, refresher, rerender } = ctx;
+		const { settings, library, rerender } = ctx;
 		const config = settings.library();
+		const kinds = kindsInUse(ctx);
 
 		/* ------------------------------------------------------ what counts */
 
@@ -100,118 +95,18 @@ export const librarySection: SettingsSection = {
 					}),
 			);
 
-		/* --------------------------------------------------- staying current */
-
-		new Setting(container).setName("Keeping notes up to date").setHeading();
-
-		container.createEl("p", {
-			text: "A note holds what its source knew on the day it was made, and some of that moves — a score settles over the first month, a date slips, a show gains a season. Scout re-asks a note as often as its own facts warrant: every few days for something not out yet or a series you are part-way through, every few months for a film from the nineties. Only facts the source owns are written; your ratings, statuses, dates, progress, and thoughts are never touched.",
-			cls: "scout-tab-intro",
-		});
-
-		addToggle(container, {
-			name: "Refresh in the background",
-			desc: "Runs a while after Obsidian starts, and every six hours it stays open.",
-			value: config.autoRefresh,
-			onChange: (v) => settings.setLibrary("autoRefresh", v),
-		});
-
-		addSlider(container, {
-			name: "Notes per run",
-			desc: "The ceiling on one run, so a large library spreads over days instead of arriving as one burst of requests.",
-			value: config.refreshBudget,
-			min: 5,
-			max: 100,
-			step: 5,
-			onChange: (v) => settings.setLibrary("refreshBudget", v),
-		});
-
-		const due = refresher.dueCount();
-		const eligible = refresher.eligibleCount();
-		new Setting(container)
-			.setName("Refresh now")
-			.setDesc(
-				eligible === 0
-					? "No note records which source it came from yet, so there is nothing to ask about."
-					: due === 0
-						? `Nothing is due. All ${eligible} linked note(s) have been checked recently.`
-						: `${due} of ${eligible} linked note(s) are due a check.`,
-			)
-			.addButton((b) =>
-				b
-					.setButtonText("Refresh what is due")
-					.setDisabled(due === 0)
-					.onClick(async () => {
-						await refreshLibrary(ctx);
-						rerender();
-					}),
-			)
-			.addButton((b) =>
-				b
-					.setButtonText("Refresh everything")
-					.setWarning()
-					.setDisabled(eligible === 0)
-					.onClick(async () => {
-						await refreshLibrary(ctx, { all: true });
-						rerender();
-					}),
-			);
-
 		/* ------------------------------------------------------- appearance */
 
 		new Setting(container).setName("Appearance").setHeading();
 
-		addDropdown<LibraryLayout>(container, {
-			name: "Layout",
-			value: config.layout,
-			options: { grid: "Grid", list: "List", table: "Table" },
-			onChange: (v) => settings.setLibrary("layout", v),
-		});
-
 		addSlider(container, {
 			name: "Cover size",
-			desc: "Minimum width of a grid card, in pixels.",
+			desc: "Minimum width of a grid card, in pixels. A saved view can override it.",
 			value: config.cardSize,
 			min: 90,
 			max: 260,
 			step: 10,
 			onChange: (v) => settings.setLibrary("cardSize", v),
-		});
-
-		addDropdown<LibraryGroupBy>(container, {
-			name: "Group by",
-			value: config.groupBy,
-			options: {
-				none: "Nothing",
-				kind: "Media type",
-				status: "Status",
-				genre: "Genre (every one an item has)",
-				"genre-main": "Main genre only",
-				person: "Person",
-				rating: "Rating",
-				favorite: "Favourite",
-				decade: "Decade",
-				year: "Year",
-			},
-			onChange: (v) => settings.setLibrary("groupBy", v),
-		});
-
-		addDropdown<LibrarySort>(container, {
-			name: "Sort by",
-			value: config.sortBy,
-			options: {
-				recent: "Recently updated",
-				added: "Recently added",
-				title: "Title (A–Z)",
-				"title-desc": "Title (Z–A)",
-				"rating-desc": "Highest rated",
-				"rating-asc": "Lowest rated",
-				"year-desc": "Newest first",
-				"year-asc": "Oldest first",
-				status: "Status",
-				progress: "Furthest along",
-			},
-			onChange: (v) => settings.setLibrary("sortBy", v),
 		});
 
 		addToggle(container, {
@@ -235,6 +130,8 @@ export const librarySection: SettingsSection = {
 			value: config.showStats,
 			onChange: (v) => settings.setLibrary("showStats", v),
 		});
+
+		new Setting(container).setName("Behaviour").setHeading();
 
 		addToggle(container, {
 			name: "Clicking an item shows its details",
@@ -268,7 +165,7 @@ export const librarySection: SettingsSection = {
 		// Vaults are rarely consistent: films copied from a source are usually
 		// out of ten while books are out of five. Rather than convert anyone's
 		// notes, the scale follows the notes.
-		for (const kind of ALL_MEDIA_KINDS) {
+		for (const kind of kinds) {
 			const own = config.ratingScales[kind];
 			addDropdown<string>(container, {
 				name: `${MEDIA_KIND_LABELS[kind]} scale`,
@@ -316,7 +213,7 @@ export const librarySection: SettingsSection = {
 			cls: "scout-tab-intro",
 		});
 
-		for (const kind of ALL_MEDIA_KINDS) {
+		for (const kind of kinds) {
 			addText(container, {
 				name: MEDIA_KIND_LABELS[kind],
 				value: config.statuses[kind],
@@ -331,7 +228,7 @@ export const librarySection: SettingsSection = {
 		new Setting(container).setName("What your statuses mean").setHeading();
 
 		container.createEl("p", {
-			text: "Sorting your own words into these four groups is what gives each status its icon and colour, and what tells Scout when to stamp a date. Anything you leave out counts as not started yet.",
+			text: "These groups set each status's icon and colour, and when dates are stamped. Anything left out counts as not started.",
 			cls: "scout-tab-intro",
 		});
 

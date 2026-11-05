@@ -1,6 +1,7 @@
 import { Setting } from "obsidian";
 import { MEDIA_KIND_LABELS } from "../../types";
 import { addPathSetting } from "../controls";
+import { enabledSourceKinds } from "./kinds";
 import type { SettingsSection } from "./types";
 
 /**
@@ -15,15 +16,9 @@ export const notesSection: SettingsSection = {
 	icon: "file-text",
 	intro: "Where each kind of note is created, and which template it uses. Templates are optional — every kind has a built-in one.",
 
-	render(container, { app, settings, registry }) {
-		const kinds = [
-			...new Set(
-				registry
-					.all()
-					.filter((p) => settings.isProviderEnabled(p.id))
-					.flatMap((p) => p.kinds),
-			),
-		];
+	render(container, ctx) {
+		const { app, settings } = ctx;
+		const kinds = enabledSourceKinds(ctx);
 
 		if (kinds.length === 0) {
 			container.createEl("p", {

@@ -10,6 +10,7 @@ import { LibraryRefresher } from "./core/library/refresher";
 import { NoteFactory } from "./core/noteFactory";
 import type { MediaProvider, ProviderContext } from "./core/provider";
 import { ProviderRegistry } from "./core/registry";
+import { adoptPlainSecrets } from "./core/settings/secrets";
 import { ScoutSettings } from "./core/settings/store";
 import { ScoutSettingTab } from "./core/settings/tab";
 import { AniListProvider } from "./providers/anilist/provider";
@@ -75,16 +76,20 @@ export default class ScoutPlugin extends Plugin {
 		const registry = new ProviderRegistry();
 
 		for (const entry of PROVIDERS) {
-			const provider = entry.create({
-				http,
-				settings: this.settings.scopeFor(entry.id),
-			});
+			const scope = this.settings.scopeFor(entry.id);
+			const provider = entry.create({ http, settings: scope });
 			if (provider.id !== entry.id) {
 				throw new Error(
 					`Provider id mismatch: table says "${entry.id}", instance says "${provider.id}"`,
 				);
 			}
 			registry.register(provider);
+			await adoptPlainSecrets(
+				this.app.secretStorage,
+				entry.id,
+				scope,
+				provider.settingsSchema(),
+			);
 		}
 
 		// The index builds itself lazily on first read, so nothing scans the
@@ -144,24 +149,10 @@ export default class ScoutPlugin extends Plugin {
 		this.addRibbonIcon("search", "Scout: search", () =>
 			new ScoutSearchModal(this.context).open(),
 		);
-
-		this.addCommand({
-			id: "reload-plugin",
-			name: "Reload plugin",
-			callback: () => {
-				const id = this.manifest.id;
-				// @ts-ignore - internal Obsidian API, used for development only
-				this.app.plugins.disablePlugin(id).then(() => {
-					// @ts-ignore
-					this.app.plugins.enablePlugin(id);
-					new Notice(`Reloaded ${this.manifest.name}`);
-				});
-			},
-		});
 	}
 
 	async onunload(): Promise<void> {
-		// Flush any settings change still inside the debounce window.
+		// Flush settings and cache changes still inside the debounce window.
 		await this.settings?.saveNow();
 	}
 }

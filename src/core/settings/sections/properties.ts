@@ -7,6 +7,7 @@ import {
 	type FieldKey,
 } from "../../library/config";
 import { ALL_MEDIA_KINDS, MEDIA_KIND_LABELS, type MediaKind } from "../../types";
+import { kindsInUse } from "./kinds";
 import { addText } from "../controls";
 import type { SectionContext, SettingsSection } from "./types";
 
@@ -65,10 +66,8 @@ function renderFieldMap(
 
 /* ----------------------------------------------------------- kind aliases */
 
-function renderKindAliases(
-	container: HTMLElement,
-	{ settings }: SectionContext,
-): void {
+function renderKindAliases(container: HTMLElement, ctx: SectionContext): void {
+	const { settings } = ctx;
 	const config = settings.library();
 
 	new Setting(container).setName("Media type values").setHeading();
@@ -77,7 +76,7 @@ function renderKindAliases(
 		cls: "scout-tab-intro",
 	});
 
-	for (const kind of ALL_MEDIA_KINDS) {
+	for (const kind of kindsInUse(ctx)) {
 		addText(container, {
 			name: MEDIA_KIND_LABELS[kind],
 			value: config.kindAliases[kind],

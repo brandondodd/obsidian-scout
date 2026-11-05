@@ -34,6 +34,7 @@ function spy(): { urls: string[]; http: HttpClient } {
 const settings: SettingsScope = {
 	get: <T>(_key: string, fallback: T) => fallback,
 	set: async () => {},
+	secret: () => "",
 };
 
 /**
