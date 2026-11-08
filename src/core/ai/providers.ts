@@ -3,11 +3,12 @@
  *
  * Almost every service now answers the OpenAI chat-completions shape, so most
  * entries are a base URL and a link to where the key comes from. Anthropic is
- * spoken to natively, and ChatGPT plan sign-in has its own route (see
- * `chatgpt.ts`) because its token only works with the Responses API.
+ * spoken to natively. The two plan routes are their own: ChatGPT sign-in
+ * (`chatgpt.ts`), whose token only works with the Responses API, and Claude
+ * Code (`claudeCode.ts`), which runs the installed program.
  */
 
-export type AiWire = "anthropic" | "chat" | "chatgpt";
+export type AiWire = "anthropic" | "chat" | "chatgpt" | "claude-code";
 
 export interface AiProvider {
 	id: string;
@@ -32,6 +33,15 @@ export const AI_PROVIDERS: readonly AiProvider[] = [
 		name: "ChatGPT plan",
 		wire: "chatgpt",
 		baseUrl: "https://api.openai.com/v1",
+		schema: true,
+		subscription: true,
+		desktopOnly: true,
+	},
+	{
+		id: "claude-code",
+		name: "Claude plan (via Claude Code)",
+		wire: "claude-code",
+		baseUrl: "",
 		schema: true,
 		subscription: true,
 		desktopOnly: true,

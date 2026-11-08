@@ -33,9 +33,11 @@ export const aiSection: SettingsSection = (container, ctx) => {
 		s
 			.setName("Service")
 			.setDesc(
-				provider.subscription
-					? "Uses your ChatGPT Plus or Pro plan's allowance instead of a paid key."
-					: "Questions are billed to your own key with this service.",
+				provider.wire === "claude-code"
+					? "Runs the Claude Code installed on this computer, signed in to your Claude plan. Scout never sees your login."
+					: provider.wire === "chatgpt"
+						? "Uses your ChatGPT Plus or Pro plan's allowance instead of a paid key."
+						: "Questions are billed to your own key with this service.",
 			)
 			.addDropdown((d) => {
 				for (const p of assistant.providers()) d.addOption(p.id, p.name);
@@ -46,7 +48,39 @@ export const aiSection: SettingsSection = (container, ctx) => {
 			}),
 	);
 
-	if (provider.subscription) {
+	if (provider.wire === "claude-code") {
+		const code = assistant.claudeCode;
+		group.addSetting((s) => {
+			s.setName("Claude Code").setDesc("Checking…");
+			s.addButton((b) => b.setButtonText("Check again").onClick(() => {
+				code.reset();
+				rerender();
+			}));
+			code.status().then(
+				(status) =>
+					s.setDesc(
+						status.loggedIn
+							? `Signed in${status.email ? ` as ${status.email}` : ""}${status.plan ? ` on the ${status.plan} plan` : ""}.`
+							: "Installed, but not signed in. Run “claude” in a terminal and sign in, then check again.",
+					),
+				(err: unknown) => s.setDesc(err instanceof Error ? err.message : String(err)),
+			);
+		});
+		group.addSetting((s) =>
+			s
+				.setName("Where Claude Code is")
+				.setDesc("Leave empty to find it automatically. Otherwise the full path to the claude program.")
+				.addText((t) =>
+					t
+						.setPlaceholder("Found automatically")
+						.setValue(scope.get("claudePath", ""))
+						.onChange(async (v) => {
+							await scope.set("claudePath", v.trim());
+							code.reset();
+						}),
+				),
+		);
+	} else if (provider.wire === "chatgpt") {
 		const account = assistant.chatgpt.account();
 		group.addSetting((s) => {
 			s.setName("ChatGPT account").setDesc(
@@ -113,7 +147,11 @@ export const aiSection: SettingsSection = (container, ctx) => {
 	const models = loadedModels.get(provider.id) ?? [];
 	group.addSetting((s) => {
 		s.setName("Model").setDesc(
-			models.length ? `${models.length} available. Start typing to pick one.` : "Type a model id, or load the list from the service.",
+			provider.wire === "claude-code"
+				? "haiku, sonnet, opus, or a full model id. Empty uses Claude Code's own default."
+				: models.length
+					? `${models.length} available. Start typing to pick one.`
+					: "Type a model id, or load the list from the service.",
 		);
 		s.addText((t) => {
 			t.setPlaceholder("Model id")

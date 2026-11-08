@@ -92,10 +92,11 @@ Off by default. Turn it on under **Settings → Scout → AI**, pick a service, 
 Services:
 
 - **ChatGPT plan** (desktop) — **Continue with ChatGPT** signs in through your browser and uses your Plus or Pro plan's allowance, through OpenAI's [Sign in with ChatGPT](https://developers.openai.com/siwc/token-sharing-open-source) for open-source apps. Scout never sees your password. **Manage usage** sets a cap for Scout in ChatGPT's settings.
+- **Claude plan, via Claude Code** (desktop) — runs the [Claude Code](https://claude.com/claude-code) already installed and signed in on your computer, so questions use your Pro or Max plan. Scout never sees your login: it starts the official `claude` program in headless mode, with no tools, MCP servers, or project files, outside your vault, and saves no session. **Haiku** is quickest and lightest on your plan.
 - **Your own key** — Anthropic, OpenAI, OpenRouter, Google Gemini, xAI Grok, Meta Muse, Mistral, or DeepSeek. Questions are billed to that key.
 - **Other (OpenAI-compatible)** — any service or local server with an OpenAI-style API, such as Ollama or LM Studio. A model on your own machine keeps the question on your machine too.
 
-Choose a model by id, or **Load models** to pick from the service's own list. Claude Pro and Max, Gemini, and Grok subscriptions can't be used here: Anthropic and Google don't allow their consumer plans in other apps, and xAI has no sign-in for third-party apps. Use a key for those.
+Choose a model by id, or **Load models** to pick from the service's own list. Gemini and Grok subscriptions can't be used here: Google doesn't allow its consumer plans in other apps, and xAI has no sign-in for third-party apps. Use a key for those.
 
 ## Commands
 
@@ -200,7 +201,7 @@ The library is built entirely from notes already in your vault. Scout contacts a
 - for **background refresh** (on by default, **Settings → Scout → Background**): re-checks notes that already record a source id, and updates only facts the source owns
   - the same switch lets Scout keep the library's Scout scores current: Open Library is asked for each book note's rating count (work ids only, fifty to a request), and, if you set up MDBList, MDBList for each film and show note's scores (TMDB ids only). These go into Scout's own cache, never into your notes
 - for **background reading-up** (off by default, same tab): fetches keywords, cast, and crew for linked notes to improve suggestions
-- when you **ask your library** (off by default, **Settings → Scout → AI**): your question, and the names of the types, statuses, genres, and collections your library uses, go to the service you chose — OpenAI with a ChatGPT plan, the service whose key you added, or the address you gave. Titles, notes, ratings, and people's names in your library are never sent; a name you type in the question is sent as typed. That service's own privacy policy applies to what it receives.
+- when you **ask your library** (off by default, **Settings → Scout → AI**): your question, and the names of the types, statuses, genres, and collections your library uses, go to the service you chose — Anthropic through your own Claude Code, OpenAI with a ChatGPT plan, the service whose key you added, or the address you gave. Titles, notes, ratings, and people's names in your library are never sent; a name you type in the question is sent as typed. That service's own privacy policy applies to what it receives.
 - when you run an **import**: each title's name, year, author, and ISBN is searched for at its source (or, for AniList, the username you typed is looked up). The export file itself is read on your device and never sent anywhere. Stats never use the network.
 
 Opening the detail dialog asks that item's own source for its cast, availability, and so on. A source you have turned off is not contacted, even for a note that came from it. Web links are not fetched again when opened. MDBList, OMDb, and Apple are contacted only if you have set them up, as listed under [Optional extras](#optional-extras). MusicBrainz is off until you enable it under **Sources**, and is limited to one request a second as it asks.

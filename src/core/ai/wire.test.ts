@@ -91,3 +91,22 @@ describe("ChatGPT sign-in", () => {
 		expect(() => checkIdToken(token({ ...good, aud: "else" }), { clientId: "oaiapp_1", nonce: "n", now: 0 })).toThrow("audience");
 	});
 });
+
+describe("Claude Code", () => {
+	it("runs fenced in: no tools, no MCP, no saved session, schema enforced", async () => {
+		const { claudeArgs } = await import("./claudeCode");
+		const args = claudeArgs("haiku", request);
+		expect(args).toEqual(expect.arrayContaining(["-p", "--safe-mode", "--strict-mcp-config", "--no-session-persistence"]));
+		expect(args[args.indexOf("--tools") + 1]).toBe("");
+		expect(args[args.indexOf("--json-schema") + 1]).toBe('{"type":"object"}');
+		expect(args.slice(-2)).toEqual(["--model", "haiku"]);
+		expect(claudeArgs("", request)).not.toContain("--model");
+	});
+
+	it("reads structured output, and says why a run failed", async () => {
+		const { claudeAnswer } = await import("./claudeCode");
+		expect(claudeAnswer('{"type":"result","subtype":"success","result":"{}","structured_output":{"a":1}}')).toEqual({ a: 1 });
+		expect(claudeAnswer('{"subtype":"success","result":"{\\"b\\":2}"}')).toEqual({ b: 2 });
+		expect(() => claudeAnswer('{"is_error":true,"result":"Not logged in"}')).toThrow("Not logged in");
+	});
+});

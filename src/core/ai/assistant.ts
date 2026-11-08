@@ -2,6 +2,7 @@ import { Platform, type SecretStorage } from "obsidian";
 import { HttpError, type HttpClient } from "../http";
 import type { ScoutSettings } from "../settings/store";
 import { ChatGptSession } from "./chatgpt";
+import { ClaudeCode } from "./claudeCode";
 import { AI_PROVIDERS, aiProvider, type AiModel, type AiProvider, type AiRequest } from "./providers";
 import { anthropicBody, anthropicText, chatBody, chatText, modelList, parseAnswer } from "./wire";
 
@@ -17,6 +18,7 @@ const ANTHROPIC_VERSION = "2026-10-21";
  */
 export class Assistant {
 	readonly chatgpt: ChatGptSession;
+	readonly claudeCode: ClaudeCode;
 
 	constructor(
 		private readonly http: HttpClient,
@@ -24,6 +26,7 @@ export class Assistant {
 		secrets: SecretStorage | undefined,
 	) {
 		this.chatgpt = new ChatGptSession(http, settings.scopeFor(AI_SCOPE), secrets);
+		this.claudeCode = new ClaudeCode(settings.scopeFor(AI_SCOPE));
 	}
 
 	private get scope() {
@@ -59,7 +62,10 @@ export class Assistant {
 
 	/** What is still missing before a question can be asked, or null when ready. */
 	missing(provider = this.provider()): string | null {
-		if (provider.subscription) {
+		// Claude Code keeps its own sign-in and picks its own model when none is
+		// named; whether it is signed in shows when it is asked.
+		if (provider.wire === "claude-code") return null;
+		if (provider.wire === "chatgpt") {
 			if (!this.chatgpt.account()) return "Sign in with ChatGPT.";
 		} else {
 			if (!this.baseUrl(provider)) return "Add the service's address.";
@@ -75,6 +81,7 @@ export class Assistant {
 
 	async models(provider = this.provider()): Promise<AiModel[]> {
 		if (provider.wire === "chatgpt") return this.chatgpt.models();
+		if (provider.wire === "claude-code") return this.claudeCode.models();
 		const body = await this.http.getJson(`${this.baseUrl(provider)}/models`, {
 			headers: this.headers(provider),
 			retries: 0,
@@ -90,6 +97,7 @@ export class Assistant {
 		if (missing) throw new Error(missing);
 
 		if (provider.wire === "chatgpt") return this.chatgpt.complete<T>(model, request);
+		if (provider.wire === "claude-code") return this.claudeCode.complete<T>(model, request);
 
 		const url = this.baseUrl(provider);
 		const options = { headers: this.headers(provider), retries: 1 };
