@@ -56,14 +56,21 @@ export const aiSection: SettingsSection = (container, ctx) => {
 				code.reset();
 				rerender();
 			}));
+			// Block bodies on purpose: a `Setting` has a `then` method, so
+			// returning one from a promise callback makes the promise adopt it
+			// as a thenable — which resolves with itself, forever, and freezes
+			// the window in an endless microtask loop.
 			code.status().then(
-				(status) =>
+				(status) => {
 					s.setDesc(
 						status.loggedIn
 							? `Signed in${status.email ? ` as ${status.email}` : ""}${status.plan ? ` on the ${status.plan} plan` : ""}.`
 							: "Installed, but not signed in. Run “claude” in a terminal and sign in, then check again.",
-					),
-				(err: unknown) => s.setDesc(err instanceof Error ? err.message : String(err)),
+					);
+				},
+				(err: unknown) => {
+					s.setDesc(err instanceof Error ? err.message : String(err));
+				},
 			);
 		});
 		group.addSetting((s) =>
