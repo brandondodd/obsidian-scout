@@ -7,7 +7,7 @@ import { ALL_MEDIA_KINDS, MEDIA_KIND_LABELS, type MediaKind } from "../types";
  * "Ask your library": a question in plain words, turned into the library's own
  * filters.
  *
- * Claude only translates. It is sent the question and the words the filters
+ * The model only translates. It is sent the question and the words the filters
  * understand — the kinds, statuses, genres and collection names in use — and
  * never a title, a note, a rating or a person. It answers with a filter, which
  * is checked here against what the library actually holds before anything is
@@ -50,7 +50,7 @@ export function askVocabulary(
 	};
 }
 
-/** What Claude is asked to fill in. Every field is required, so "off" has a value. */
+/** What the model is asked to fill in. Every field is required, so "off" has a value. */
 export interface AskAnswer {
 	summary: string;
 	text: string;
@@ -134,12 +134,12 @@ export function askPrompt(question: string, vocabulary: AskVocabulary, today: Da
 export interface AskResult {
 	summary: string;
 	focus: Partial<QueryFilters> & { text?: string };
-	/** Words Claude used that this library has no match for. */
+	/** Words the model used that this library has no match for. */
 	unknown: string[];
 }
 
 /**
- * Checks Claude's answer against the library and converts it to filters.
+ * Checks the model's answer against the library and converts it to filters.
  *
  * Anything that matches nothing here is dropped and reported rather than
  * passed on, because a filter for a genre the library does not have would
@@ -200,7 +200,7 @@ export function toFocus(
 
 	if (answer.favoritesOnly) focus.favoritesOnly = true;
 	if (answer.minRating > 0) {
-		// The filter takes the default scale and compares proportionally; Claude speaks in tens.
+		// The filter takes the default scale and compares proportionally; the model speaks in tens.
 		const onScale = (Math.min(answer.minRating, 10) / 10) * config.ratingScale;
 		focus.minRating = Math.round(onScale * 2) / 2;
 	}

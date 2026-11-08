@@ -1,4 +1,5 @@
 import type { App } from "obsidian";
+import type { Assistant } from "./ai/assistant";
 import type { DetailService } from "./detail/service";
 import type { CollectionKeeper } from "./library/collector";
 import type { LibraryIndex } from "./library/indexer";
@@ -31,4 +32,6 @@ export interface ScoutContext {
 	collector: CollectionKeeper;
 	/** Gathers what the detail dialog shows beyond a note's own record. */
 	detail: DetailService;
+	/** Asks the AI service the person chose, when they have turned it on. */
+	assistant: Assistant;
 }

@@ -163,12 +163,35 @@ export class HttpClient {
 		return parsed;
 	}
 
+	/** A JSON payload whose answer is read as text — a streamed reply, say. */
+	async postJsonText(url: string, payload: unknown, options: RequestOptions = {}): Promise<string> {
+		return this.send(
+			{
+				url,
+				method: "POST",
+				contentType: "application/json",
+				headers: { "Content-Type": "application/json", ...options.headers },
+				body: JSON.stringify(payload),
+			},
+			options,
+		);
+	}
+
 	async postForm<T>(
 		url: string,
 		form: Record<string, string>,
 		options: RequestOptions = {},
 	): Promise<T> {
-		const body = await this.send(
+		return JSON.parse(await this.postFormText(url, form, options)) as T;
+	}
+
+	/** A form post whose answer may be empty, as a token revocation's is. */
+	async postFormText(
+		url: string,
+		form: Record<string, string>,
+		options: RequestOptions = {},
+	): Promise<string> {
+		return this.send(
 			{
 				url,
 				method: "POST",
@@ -181,7 +204,6 @@ export class HttpClient {
 			},
 			options,
 		);
-		return JSON.parse(body) as T;
 	}
 
 	/** Raw text, for HTML scraping (Open Graph tags). */

@@ -1,3 +1,4 @@
+import { Assistant } from "./core/ai/assistant";
 import { Notice, Plugin } from "obsidian";
 import { registerCommands } from "./commands";
 import { scoreKey } from "./core/scout-score";
@@ -165,6 +166,7 @@ export default class ScoutPlugin extends Plugin {
 			enricher,
 			collector,
 			detail,
+			assistant: new Assistant(http, this.settings, this.app.secretStorage),
 		};
 
 		// After load, not during it: the first run waits long enough that

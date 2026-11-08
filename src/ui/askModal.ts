@@ -1,6 +1,5 @@
 import { Modal, Notice, Setting } from "obsidian";
 import { askPrompt, askSchema, askVocabulary, ASK_SYSTEM, toFocus, type AskAnswer } from "../core/ai/ask";
-import { askJson } from "../core/ai/claude";
 import type { ScoutContext } from "../core/context";
 import { openLibrary } from "./libraryView";
 
@@ -9,12 +8,9 @@ export class ScoutAskModal extends Modal {
 	private question = "";
 	private busy = false;
 	private error = "";
-	private controller: AbortController | null = null;
+	private closed = false;
 
-	constructor(
-		private readonly ctx: ScoutContext,
-		private readonly apiKey: string,
-	) {
+	constructor(private readonly ctx: ScoutContext) {
 		super(ctx.app);
 	}
 
@@ -24,7 +20,7 @@ export class ScoutAskModal extends Modal {
 	}
 
 	onClose(): void {
-		this.controller?.abort();
+		this.closed = true;
 		this.contentEl.empty();
 	}
 
@@ -55,7 +51,7 @@ export class ScoutAskModal extends Modal {
 			);
 		contentEl.createEl("p", {
 			cls: "setting-item-description",
-			text: "Sends your question and your library's genre, status and collection names to Claude. Titles, notes and ratings stay here.",
+			text: `Sends your question and your library's genre, status and collection names to ${this.ctx.assistant.provider().name}. Titles, notes and ratings stay here.`,
 		});
 		if (this.error) contentEl.createEl("p", { cls: "mod-warning", text: this.error });
 	}
@@ -75,17 +71,13 @@ export class ScoutAskModal extends Modal {
 			entries,
 			settings.collections().map((c) => c.name),
 		);
-		this.controller = new AbortController();
 		try {
-			const answer = await askJson<AskAnswer>(
-				this.apiKey,
-				{
-					system: ASK_SYSTEM,
-					prompt: askPrompt(question, vocabulary, new Date()),
-					schema: askSchema(vocabulary),
-				},
-				this.controller.signal,
-			);
+			const answer = await this.ctx.assistant.ask<AskAnswer>({
+				system: ASK_SYSTEM,
+				prompt: askPrompt(question, vocabulary, new Date()),
+				schema: askSchema(vocabulary),
+			});
+			if (this.closed) return;
 			const result = toFocus(answer, vocabulary, config, entries);
 			await openLibrary(this.app, result.focus);
 			const missing = result.unknown.length
@@ -94,7 +86,7 @@ export class ScoutAskModal extends Modal {
 			new Notice(`${result.summary || "Filtered your library."}${missing}`, 8000);
 			this.close();
 		} catch (err) {
-			if (this.controller.signal.aborted) return;
+			if (this.closed) return;
 			this.error = `Could not ask: ${err instanceof Error ? err.message : String(err)}`;
 			this.busy = false;
 			this.draw();

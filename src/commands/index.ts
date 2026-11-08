@@ -1,5 +1,4 @@
 import { Notice, Plugin } from "obsidian";
-import { aiKey } from "../core/ai/claude";
 import type { ScoutContext } from "../core/context";
 import { ScoutAskModal } from "../ui/askModal";
 import { isResolvable } from "../core/provider";
@@ -52,10 +51,9 @@ export function registerCommands(plugin: Plugin, ctx: ScoutContext): void {
 		id: "ask-library",
 		name: "Ask your library",
 		checkCallback: (checking) => {
-			// Hidden until switched on with a key in Settings → Scout → AI.
-			const key = aiKey(settings);
-			if (!key) return false;
-			if (!checking) new ScoutAskModal(ctx, key).open();
+			// Hidden until switched on and set up in Settings → Scout → AI.
+			if (!ctx.assistant.ready()) return false;
+			if (!checking) new ScoutAskModal(ctx).open();
 			return true;
 		},
 	});

@@ -87,7 +87,15 @@ Each title is looked up at its source, so imported notes come out of the same te
 
 ## Ask your library
 
-Off by default. Turn it on under **Settings → Scout → AI** with your own [Anthropic API key](https://console.anthropic.com), then run **Ask your library** and type a question — "sci-fi I loved from the 90s", "books I gave up on", "anything with Villeneuve I haven't finished". Claude turns the question into the library's own filters, and the library opens filtered to the answer. What Claude suggests is checked against your library first, and anything it has no match for (a genre you never use, say) is left out and named.
+Off by default. Turn it on under **Settings → Scout → AI**, pick a service, then run **Ask your library** and type a question — "sci-fi I loved from the 90s", "books I gave up on", "anything with Villeneuve I haven't finished". The model turns the question into the library's own filters, and the library opens filtered to the answer. What it suggests is checked against your library first; anything with no match (a genre you never use, say) is left out and named.
+
+Services:
+
+- **ChatGPT plan** (desktop) — **Continue with ChatGPT** signs in through your browser and uses your Plus or Pro plan's allowance, through OpenAI's [Sign in with ChatGPT](https://developers.openai.com/siwc/token-sharing-open-source) for open-source apps. Scout never sees your password. **Manage usage** sets a cap for Scout in ChatGPT's settings.
+- **Your own key** — Anthropic, OpenAI, OpenRouter, Google Gemini, xAI Grok, Meta Muse, Mistral, or DeepSeek. Questions are billed to that key.
+- **Other (OpenAI-compatible)** — any service or local server with an OpenAI-style API, such as Ollama or LM Studio. A model on your own machine keeps the question on your machine too.
+
+Choose a model by id, or **Load models** to pick from the service's own list. Claude Pro and Max, Gemini, and Grok subscriptions can't be used here: Anthropic and Google don't allow their consumer plans in other apps, and xAI has no sign-in for third-party apps. Use a key for those.
 
 ## Commands
 
@@ -192,7 +200,7 @@ The library is built entirely from notes already in your vault. Scout contacts a
 - for **background refresh** (on by default, **Settings → Scout → Background**): re-checks notes that already record a source id, and updates only facts the source owns
   - the same switch lets Scout keep the library's Scout scores current: Open Library is asked for each book note's rating count (work ids only, fifty to a request), and, if you set up MDBList, MDBList for each film and show note's scores (TMDB ids only). These go into Scout's own cache, never into your notes
 - for **background reading-up** (off by default, same tab): fetches keywords, cast, and crew for linked notes to improve suggestions
-- when you **ask your library** (off by default, **Settings → Scout → AI**): your question, and the types, statuses, genres, and collection names your library uses, go to Anthropic's Claude API with your own key. Titles, notes, ratings, and people's names in your library are never sent; a name you type in the question is sent as typed. Anthropic's [privacy policy](https://www.anthropic.com/legal/privacy) applies to what it receives.
+- when you **ask your library** (off by default, **Settings → Scout → AI**): your question, and the names of the types, statuses, genres, and collections your library uses, go to the service you chose — OpenAI with a ChatGPT plan, the service whose key you added, or the address you gave. Titles, notes, ratings, and people's names in your library are never sent; a name you type in the question is sent as typed. That service's own privacy policy applies to what it receives.
 - when you run an **import**: each title's name, year, author, and ISBN is searched for at its source (or, for AniList, the username you typed is looked up). The export file itself is read on your device and never sent anywhere. Stats never use the network.
 
 Opening the detail dialog asks that item's own source for its cast, availability, and so on. A source you have turned off is not contacted, even for a note that came from it. Web links are not fetched again when opened. MDBList, OMDb, and Apple are contacted only if you have set them up, as listed under [Optional extras](#optional-extras). MusicBrainz is off until you enable it under **Sources**, and is limited to one request a second as it asks.
@@ -201,7 +209,7 @@ Artwork and service logos in the dialog load from those sources' image servers, 
 
 Background jobs send only the source ids already in your notes — never note contents, file names, ratings, or thoughts. Reading-up results are kept in `cache.json` in the plugin folder, never in your notes.
 
-Your TMDB token, IGDB client secret, MDBList and OMDb keys, and Anthropic key are kept in Obsidian's secret storage. If an older version stored it in `data.json`, it is copied into secret storage and the plain copy is kept as a fallback, so it keeps working on synced devices. Once every device runs this version, you can delete `accessToken` from `data.json`.
+Your TMDB token, IGDB client secret, MDBList and OMDb keys, AI service keys, and ChatGPT sign-in are kept in Obsidian's secret storage. If an older version stored it in `data.json`, it is copied into secret storage and the plain copy is kept as a fallback, so it keeps working on synced devices. Once every device runs this version, you can delete `accessToken` from `data.json`.
 
 No telemetry.
 
