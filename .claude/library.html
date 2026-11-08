@@ -1,0 +1,97 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scout — library view bar and toolbar</title>
+<link rel="stylesheet" href="/styles.css">
+<style>
+  /* The same stand-ins as rail.html: the variables the plugin never hard-codes,
+     Obsidian's own button and input defaults, and a theme that rounds them. */
+  :root {
+    --background-primary: #1e1e1e;
+    --background-secondary: #262626;
+    --background-modifier-border: #363636;
+    --background-modifier-border-hover: #454545;
+    --background-modifier-hover: #2f2f2f;
+    --text-normal: #dcddde;
+    --text-muted: #999;
+    --text-faint: #6e6e6e;
+    --text-accent: #a882ff;
+    --interactive-accent: #7c4dff;
+    --interactive-accent-hover: #8f66ff;
+    --text-on-accent: #fff;
+    --font-interface: system-ui, sans-serif;
+  }
+  body { margin: 0; background: var(--background-primary); color: var(--text-normal);
+         font-family: var(--font-interface); }
+  button { padding: 6px 12px; border: 0; border-radius: 4px; background: #333;
+           color: var(--text-normal); font-family: inherit; font-size: 14px; cursor: pointer; }
+  .theme-dark button { background: #2f2f2f; border-radius: 18px; }
+  input, select { padding: 6px 8px; border: 1px solid var(--background-modifier-border);
+                  border-radius: 4px; background: var(--background-primary);
+                  color: var(--text-normal); font-family: inherit; font-size: 14px; }
+  .scout-icon { display: inline-block; width: var(--icon-size, 16px); height: var(--icon-size, 16px);
+                background: currentColor; border-radius: 2px; opacity: .8; flex: 0 0 auto; }
+</style>
+</head>
+<body class="theme-dark">
+<div class="scout-library">
+  <div class="scout-view-bar" role="tablist" aria-label="Views">
+    <button role="tab" class="is-on"><span class="scout-icon" style="--icon-size:14px"></span>All</button>
+    <button role="tab"><span class="scout-icon" style="--icon-size:14px"></span>Films</button>
+    <button role="tab"><span class="scout-icon" style="--icon-size:14px"></span>Watching now</button>
+    <button role="tab"><span class="scout-icon" style="--icon-size:14px"></span>To read</button>
+    <button class="scout-view-save"><span class="scout-icon" style="--icon-size:14px"></span>New view</button>
+    <span class="scout-view-split" aria-hidden="true"></span>
+    <button role="tab" class="scout-view-shelves"><span class="scout-icon" style="--icon-size:14px"></span>Collections<span class="scout-count">3</span></button>
+    <button class="scout-view-manage"><span class="scout-icon" style="--icon-size:14px"></span></button>
+  </div>
+
+  <div class="scout-library-toolbar">
+    <div class="scout-search-wrap">
+      <span class="scout-icon"></span>
+      <input type="text" class="scout-library-search" placeholder="Filter your library…">
+    </div>
+    <div class="scout-filter-controls">
+      <select><option>Any status</option></select>
+      <select><option>Any genre</option></select>
+      <select><option>Any rating</option></select>
+      <select><option>Recently added</option></select>
+      <select><option>No grouping</option></select>
+      <button class="scout-toggle"><span class="scout-icon" style="--icon-size:15px"></span></button>
+    </div>
+    <button class="mod-cta scout-add"><span class="scout-icon"></span><span class="scout-add-label">Add</span></button>
+    <div class="scout-layout-toggle" role="group" aria-label="Layout">
+      <button class="is-on"><span class="scout-icon"></span></button>
+      <button><span class="scout-icon"></span></button>
+      <button><span class="scout-icon"></span></button>
+    </div>
+  </div>
+
+  <div class="scout-library-body">
+    <div class="scout-entries scout-entries-grid" id="shelf"></div>
+  </div>
+</div>
+
+<script>
+const TITLES = ["Arrival","Everything Everywhere All at Once","Nope","Dune: Part Two","Perfect Blue","The Zone of Interest","Sicario","Blade Runner 2049","Paprika","Annihilation"];
+document.getElementById("shelf").innerHTML = Array.from({length: 60}, (_, n) => {
+  const t = TITLES[n % TITLES.length];
+  return `
+  <div class="scout-entry" role="button" tabindex="0">
+    <div class="scout-entry-art">
+      <div class="scout-cover scout-cover-empty">${t.slice(0,2).toUpperCase()}</div>
+      <span class="scout-kind-badge"><span class="scout-icon" style="--icon-size:12px"></span></span>
+      ${n % 5 === 0 ? '<span class="scout-entry-fav"><span class="scout-icon" style="--icon-size:15px"></span></span>' : ""}
+    </div>
+    <div class="scout-entry-info">
+      <h4>${t}</h4>
+      <p class="scout-entry-meta"><span class="scout-icon" style="--icon-size:11px"></span>2024 · Movie</p>
+      <div class="scout-entry-foot"><span class="scout-chip-rating">8.4</span></div>
+    </div>
+  </div>`;
+}).join("");
+</script>
+</body>
+</html>

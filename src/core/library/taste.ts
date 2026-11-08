@@ -1,3 +1,4 @@
+import { canonicalGenres } from "../genres/genres";
 import { MEDIA_KIND_PLURALS, type MediaItem, type MediaKind } from "../types";
 import {
 	ratingFraction,
@@ -792,8 +793,10 @@ export function kindShare(profile: TasteProfile, kind: MediaKind): number {
 function candidateTraits(candidate: Candidate): Trait[] {
 	if (candidate.traits) return [...candidate.traits];
 	const out: Trait[] = [];
-	for (const tag of candidate.tags) {
-		if (tag.trim()) out.push({ key: traitKey("genre", tag), label: tag.trim() });
+	// Read the way every other genre is, so a longhand candidate meets the
+	// library on the same names.
+	for (const tag of canonicalGenres(candidate.kind, candidate.tags, { keepUnknown: "any" })) {
+		out.push({ key: traitKey("genre", tag), label: tag });
 	}
 	for (const name of candidate.people.slice(0, 4)) {
 		if (name.trim()) {

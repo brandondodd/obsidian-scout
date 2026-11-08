@@ -188,7 +188,7 @@ export const FIELD_INFO: Record<
 	rating: { name: "Your rating", desc: "Written when you rate.", writes: true },
 	sourceRating: {
 		name: "Source rating",
-		desc: "The source's own score, out of ten. Shown on cards you have not rated yourself, and kept current by the refresh below.",
+		desc: "The source's own score, out of ten. Scout reads it onto its own scale for cards you have not rated yourself, and the refresh below keeps it current.",
 		writes: true,
 	},
 	status: { name: "Status", desc: "Written when you change status.", writes: true },
@@ -237,6 +237,7 @@ export const DEFAULT_KIND_ALIASES: Record<MediaKind, string> = {
 	game: "game, video game, videogame",
 	anime: "anime",
 	manga: "manga",
+	album: "album, music, record",
 	link: "link, article, web, bookmark",
 };
 
@@ -249,15 +250,17 @@ export const DEFAULT_STATUSES: Record<MediaKind, string> = {
 	book: "To read, Reading, Read, On hold, Dropped",
 	manga: "To read, Reading, Read, On hold, Dropped",
 	game: "To play, Playing, Played, On hold, Dropped",
+	album: "To listen, Listening, Listened, On hold, Dropped",
 	link: "To read, Read, Archived",
 };
 
 /** Statuses that mean "in progress" — used to stamp the start date. */
-export const DEFAULT_IN_PROGRESS = "Watching, Reading, Playing, In progress";
+export const DEFAULT_IN_PROGRESS =
+	"Watching, Reading, Playing, Listening, In progress";
 
 /** Statuses that mean "done" — used to stamp the finish date. */
 export const DEFAULT_FINISHED =
-	"Watched, Read, Played, Completed, Finished, Done";
+	"Watched, Read, Played, Listened, Completed, Finished, Done";
 
 /** Statuses that mean "started but set aside". */
 export const DEFAULT_PAUSED = "On hold, Paused, Waiting";
@@ -320,7 +323,24 @@ export interface CustomField {
 
 /* --------------------------------------------------------------- the config */
 
-export type LibraryLayout = "grid" | "list" | "table";
+/**
+ * Four ways to look at the same shelf, each for a different job.
+ *
+ * Grid is for browsing by cover. List is for reading — title, who made it,
+ * its genres and your verdict on one line each, and the layout that works
+ * best on a phone. Table is for comparing and sorting by the numbers. Board
+ * puts each group in a column of its own, side by side — what you are on,
+ * what is next, what is done — so the whole picture fits on one screen.
+ */
+export type LibraryLayout = "grid" | "list" | "table" | "board";
+
+export const LIBRARY_LAYOUTS: readonly LibraryLayout[] = ["grid", "list", "table", "board"];
+
+/** A stored layout, read safely. "shelves" was the board's name in a pre-release build. */
+export function layoutOf(value: unknown): LibraryLayout | undefined {
+	if (value === "shelves") return "board";
+	return LIBRARY_LAYOUTS.includes(value as LibraryLayout) ? (value as LibraryLayout) : undefined;
+}
 
 /**
  * Genre and person put one entry on several shelves at once — a film is both
@@ -340,9 +360,14 @@ export type LibraryGroupBy =
 	| "year"
 	| "genre"
 	| "genre-main"
+	| "tone"
 	| "person"
 	| "collection"
-	| "favorite";
+	| "favorite"
+	| "added"
+	| "finished"
+	| "release"
+	| "source";
 
 export type LibrarySort =
 	| "recent"
@@ -354,7 +379,62 @@ export type LibrarySort =
 	| "year-desc"
 	| "year-asc"
 	| "status"
-	| "progress";
+	| "progress"
+	| "recent-asc"
+	| "added-asc"
+	| "source-desc"
+	| "source-asc"
+	| "finished-desc"
+	| "finished-asc";
+
+/**
+ * Sorts as a field and a direction, which is how the toolbar offers them.
+ *
+ * Stored as one value each, as they always were, so saved views keep working;
+ * a field with no sensible reverse (status follows your own order) has one.
+ */
+export interface SortField {
+	id: string;
+	label: string;
+	/** The way it runs when first picked. */
+	first: LibrarySort;
+	/** The other way, when there is one. */
+	other?: LibrarySort;
+}
+
+export const SORT_FIELDS: readonly SortField[] = [
+	{ id: "updated", label: "Last updated", first: "recent", other: "recent-asc" },
+	{ id: "added", label: "Date added", first: "added", other: "added-asc" },
+	{ id: "title", label: "Title", first: "title", other: "title-desc" },
+	{ id: "rating", label: "Your rating", first: "rating-desc", other: "rating-asc" },
+	{ id: "source", label: "Scout score", first: "source-desc", other: "source-asc" },
+	{ id: "year", label: "Release date", first: "year-desc", other: "year-asc" },
+	{ id: "finished", label: "Date finished", first: "finished-desc", other: "finished-asc" },
+	{ id: "status", label: "Status", first: "status" },
+	{ id: "progress", label: "Progress", first: "progress" },
+];
+
+/** The field a sort belongs to, and whether it is running the other way. */
+export function sortFieldOf(sort: LibrarySort): { field: SortField; reversed: boolean } {
+	for (const field of SORT_FIELDS) {
+		if (field.first === sort) return { field, reversed: false };
+		if (field.other === sort) return { field, reversed: true };
+	}
+	return { field: SORT_FIELDS[0] as SortField, reversed: false };
+}
+
+/** Whether a sort runs from high to low (or new to old, Z to A). */
+export function sortIsDescending(sort: LibrarySort): boolean {
+	return [
+		"recent",
+		"added",
+		"title-desc",
+		"rating-desc",
+		"source-desc",
+		"year-desc",
+		"finished-desc",
+	].includes(sort);
+}
 
 /**
  * What each of them is called on screen.
@@ -375,26 +455,47 @@ export const SORT_LABELS: Record<LibrarySort, string> = {
 	"year-asc": "Oldest first",
 	status: "Status",
 	progress: "Furthest along",
+	"recent-asc": "Least recently updated",
+	"added-asc": "Oldest added",
+	"source-desc": "Highest Scout score",
+	"source-asc": "Lowest Scout score",
+	"finished-desc": "Finished most recently",
+	"finished-asc": "Finished longest ago",
 };
 
 export const GROUP_LABELS: Record<LibraryGroupBy, string> = {
 	none: "No grouping",
 	kind: "By type",
 	status: "By status",
-	genre: "By genre",
+	tone: "By progress",
 	"genre-main": "By main genre",
+	genre: "By every genre",
 	person: "By person",
 	collection: "By collection",
-	rating: "By rating",
+	rating: "By your rating",
+	source: "By Scout score",
 	favorite: "By favourite",
 	decade: "By decade",
-	year: "By year",
+	year: "By release year",
+	release: "By release",
+	added: "By month added",
+	finished: "By year finished",
 };
+
+/** The grouping menu, in sections. */
+export const GROUP_SECTIONS: readonly (readonly LibraryGroupBy[])[] = [
+	["none"],
+	["kind", "status", "tone", "favorite"],
+	["genre-main", "genre", "person", "collection"],
+	["rating", "source"],
+	["year", "decade", "release", "added", "finished"],
+];
 
 export const LAYOUT_LABELS: Record<LibraryLayout, string> = {
 	grid: "Grid",
 	list: "List",
 	table: "Table",
+	board: "Board",
 };
 
 export type RatingIcon = "star" | "heart" | "circle" | "number";
@@ -438,6 +539,11 @@ export interface LibraryConfig {
 	droppedStatuses: string;
 	/** Stamp the start/finish dates when the status changes. */
 	autoTimestamps: boolean;
+	/**
+	 * ISO country code for age ratings, availability, and prices. Empty follows
+	 * the system locale.
+	 */
+	region: string;
 
 	/**
 	 * Ask sources for fresh metadata in the background.
@@ -559,6 +665,7 @@ export function defaultLibraryConfig(): LibraryConfig {
 		pausedStatuses: DEFAULT_PAUSED,
 		droppedStatuses: DEFAULT_DROPPED,
 		autoTimestamps: true,
+		region: "",
 
 		autoRefresh: true,
 		refreshBudget: 20,
@@ -614,6 +721,16 @@ export function normalizeLibraryConfig(
 		fields: { ...base.fields, ...stored.fields },
 		kindAliases: { ...base.kindAliases, ...stored.kindAliases },
 		statuses: { ...base.statuses, ...stored.statuses },
+		// A config saved before albums existed has never heard of these two, and
+		// without them "Listening" would read as not started.
+		inProgressStatuses: withWord(
+			stored.inProgressStatuses ?? base.inProgressStatuses,
+			"Listening",
+		),
+		finishedStatuses: withWord(
+			stored.finishedStatuses ?? base.finishedStatuses,
+			"Listened",
+		),
 		ratingScale: validScale(stored.ratingScale) ?? base.ratingScale,
 		ratingScales: cleanScales(stored.ratingScales),
 		goals: cleanGoals(stored.goals),
@@ -627,7 +744,24 @@ export function normalizeLibraryConfig(
 		// for nothing at all and reads as the row being broken.
 		suggestionStandard: validStandard(stored.suggestionStandard) ?? base.suggestionStandard,
 		customFields: stored.customFields ?? [],
+		layout: layoutOf(stored.layout) ?? base.layout,
+		sortBy:
+			typeof stored.sortBy === "string" && stored.sortBy in SORT_LABELS
+				? stored.sortBy
+				: base.sortBy,
+		groupBy:
+			typeof stored.groupBy === "string" && stored.groupBy in GROUP_LABELS
+				? stored.groupBy
+				: base.groupBy,
 	};
+}
+
+/** Adds a word to a comma-separated list, unless it is already there. */
+function withWord(list: string, word: string): string {
+	const has = splitList(list).some(
+		(one) => one.toLowerCase() === word.toLowerCase(),
+	);
+	return has ? list : list ? `${list}, ${word}` : word;
 }
 
 function validStandard(value: unknown): number | undefined {

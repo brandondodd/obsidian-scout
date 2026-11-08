@@ -1,3 +1,4 @@
+import { entryMainGenres } from "../genres/genres";
 import { ALL_MEDIA_KINDS, type MediaKind } from "../types";
 import {
 	ratingFraction,
@@ -75,6 +76,10 @@ export interface Heatmap {
 	/** One per day from `start`, in order. Days outside the period are null. */
 	days: ({ date: string; count: number } | null)[];
 	max: number;
+	/** Days in the period with something finished. */
+	active: number;
+	/** The longest run of such days back to back. */
+	streak: number;
 }
 
 export interface TimeFigure {
@@ -177,7 +182,7 @@ export function buildStats(
 		time: timeSpent(done),
 		ratings: ratingSpreads(config, period),
 		average,
-		genres: traitStats(config, period, (e) => e.tags, average),
+		genres: traitStats(config, period, (e) => entryMainGenres(e), average),
 		people: traitStats(config, period, (e) => (e.authored.length > 0 ? e.authored : e.people.slice(0, 3)), average),
 		dropped: droppedRate(config, entries, finishedEntries, filter.year),
 		replays: replays(entries, done),
@@ -236,6 +241,9 @@ function heatmap(list: readonly Completion[], year: number | null, now: Date): H
 
 	const days: Heatmap["days"] = [];
 	let max = 0;
+	let active = 0;
+	let streak = 0;
+	let run = 0;
 	const lo = iso(first);
 	const hi = iso(last);
 	for (const day = new Date(start); iso(day) <= hi; day.setDate(day.getDate() + 1)) {
@@ -246,9 +254,12 @@ function heatmap(list: readonly Completion[], year: number | null, now: Date): H
 		}
 		const count = counts.get(date) ?? 0;
 		max = Math.max(max, count);
+		run = count > 0 ? run + 1 : 0;
+		if (count > 0) active++;
+		streak = Math.max(streak, run);
 		days.push({ date, count });
 	}
-	return { start: iso(start), days, max };
+	return { start: iso(start), days, max, active, streak };
 }
 
 function num(entry: LibraryEntry, key: string): number | undefined {

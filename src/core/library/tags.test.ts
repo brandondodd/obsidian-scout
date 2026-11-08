@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { needsTagSafeNames, tagSafe, tagSafeList } from "./tags";
+import { needsTagSafeNames, readableTag, tagSafe, tagSafeList } from "./tags";
 
 describe("tagSafe", () => {
 	// The one that started it: TMDB's own name for the genre.
@@ -56,5 +56,24 @@ describe("needsTagSafeNames", () => {
 		const typed = (name: string) => (name === "genres" ? "tags" : "multitext");
 		expect(needsTagSafeNames("genres", typed)).toBe(true);
 		expect(needsTagSafeNames("people", typed)).toBe(false);
+	});
+});
+
+describe("readableTag", () => {
+	it("puts back the ampersand a tag-safe genre stood for", () => {
+		expect(readableTag("Sci-Fi-and-Fantasy")).toBe("Sci-Fi & Fantasy");
+		expect(readableTag("Action-and-Adventure")).toBe("Action & Adventure");
+	});
+
+	it("prefers the source's own wording when it is known", () => {
+		expect(readableTag("Science-Fiction", ["Science Fiction"])).toBe(
+			"Science Fiction",
+		);
+	});
+
+	it("leaves ordinary names and real hyphens alone", () => {
+		expect(readableTag("Drama")).toBe("Drama");
+		expect(readableTag("Sci-Fi")).toBe("Sci-Fi");
+		expect(readableTag("Rock and Roll")).toBe("Rock and Roll");
 	});
 });

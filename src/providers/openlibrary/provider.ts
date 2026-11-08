@@ -1,8 +1,11 @@
+import { canonicalGenres } from "../../core/genres/genres";
+import type { ItemExtras } from "../../core/detail/types";
 import type {
 	Detailable,
 	Discoverable,
 	DiscoverQuery,
 	Enrichable,
+	Extended,
 	MediaProvider,
 	ProviderContext,
 	ProviderTraits,
@@ -17,6 +20,11 @@ import type {
 	MediaKind,
 	MediaRef,
 } from "../../core/types";
+import {
+	toExtras,
+	type OpenLibraryAuthor,
+	type OpenLibraryDoc,
+} from "./extras";
 
 /**
  * Open Library.
@@ -87,7 +95,9 @@ function toItem(doc: SearchDoc): MediaItem {
 		imageUrl: coverUrl(doc.cover_i, "L"),
 		thumbnailUrl: coverUrl(doc.cover_i, "M"),
 		description: undefined,
-		tags: (doc.subject ?? []).slice(0, 12),
+		// Subjects run from genres to places, people and bestseller-list
+		// stamps; only the genres are kept.
+		tags: canonicalGenres("book", doc.subject),
 		people: authors,
 		externalUrl: id ? `${API}/works/${id}` : undefined,
 		releaseDate: doc.first_publish_year
@@ -139,6 +149,7 @@ export class OpenLibraryProvider
 		MediaProvider,
 		Searchable,
 		Detailable,
+		Extended,
 		Resolvable,
 		Discoverable,
 		Enrichable
@@ -280,6 +291,64 @@ export class OpenLibraryProvider
 		};
 	}
 
+	/**
+	 * The author, their other books, and whether a copy can be borrowed.
+	 *
+	 * The author's record and bibliography are extras on an extra, so either can
+	 * fail and still leave the book's own details on screen.
+	 */
+	async extras(ref: MediaRef, ctx: RequestContext): Promise<ItemExtras> {
+		const fields = `${SEARCH_FIELDS},author_key,ebook_access,ia,editions,editions.publisher,editions.isbn,editions.language`;
+		const lang =
+			typeof navigator === "undefined"
+				? "en"
+				: navigator.language.slice(0, 2).toLowerCase();
+		const response = await this.ctx.http.getJson<{
+			docs?: (SearchDoc & OpenLibraryDoc)[];
+		}>(
+			`${API}/search.json?q=key:/works/${encodeURIComponent(ref.id)}&limit=1&lang=${lang}&fields=${fields}`,
+			{ signal: ctx.signal, cacheTtlMs: 30 * 60 * 1000 },
+		);
+		const doc = response.docs?.[0];
+		if (!doc) throw new Error("Book not found in Open Library");
+
+		const authorKey = doc.author_key?.[0];
+		if (!authorKey) return toExtras({ doc });
+
+		const quietly = async <T,>(run: Promise<T>): Promise<T | null> => {
+			try {
+				return await run;
+			} catch (err) {
+				if (ctx.signal.aborted) throw err;
+				return null;
+			}
+		};
+		const [author, works] = await Promise.all([
+			quietly(
+				this.ctx.http.getJson<OpenLibraryAuthor>(
+					`${API}/authors/${encodeURIComponent(authorKey)}.json`,
+					{ signal: ctx.signal, cacheTtlMs: 24 * 60 * 60 * 1000 },
+				),
+			),
+			quietly(
+				this.ctx.http.getJson<{ numFound?: number; docs?: SearchDoc[] }>(
+					`${API}/search.json?q=author_key:${encodeURIComponent(authorKey)}&sort=rating&limit=13&fields=${SEARCH_FIELDS}`,
+					{ signal: ctx.signal, cacheTtlMs: 24 * 60 * 60 * 1000 },
+				),
+			),
+		]);
+		return toExtras({
+			doc,
+			author,
+			authorKey,
+			others: (works?.docs ?? [])
+				.filter((one) => one.key && workId(one.key) !== ref.id)
+				.slice(0, 12)
+				.map(toItem),
+			...(works?.numFound ? { worksTotal: works.numFound } : {}),
+		});
+	}
+
 	async details(ref: MediaRef, ctx: RequestContext): Promise<MediaItem> {
 		// Re-run a targeted search to recover the summary fields, since the
 		// works endpoint alone omits authors and ratings.
@@ -304,8 +373,8 @@ export class OpenLibraryProvider
 					? work.description
 					: work.description?.value;
 			if (description) item.description = description;
-			if (work.subjects?.length && item.tags.length === 0) {
-				item.tags = work.subjects.slice(0, 12);
+			if (work.subjects?.length) {
+				item.tags = canonicalGenres("book", [...item.tags, ...work.subjects]);
 			}
 		} catch {
 			// A missing synopsis should not block note creation.

@@ -1,21 +1,28 @@
 import { Notice, Plugin } from "obsidian";
 import { registerCommands } from "./commands";
+import { scoreKey } from "./core/scout-score";
 import type { ScoutContext } from "./core/context";
+import { DetailService } from "./core/detail/service";
 import { HttpClient } from "./core/http";
 import { CollectionKeeper } from "./core/library/collector";
 import { LibraryIndex } from "./core/library/indexer";
 import { LibraryMutator } from "./core/library/mutate";
 import { LibraryEnricher } from "./core/library/enricher";
 import { LibraryRefresher } from "./core/library/refresher";
+import { ScoreKeeper } from "./core/library/scorer";
 import { NoteFactory } from "./core/noteFactory";
-import type { MediaProvider, ProviderContext } from "./core/provider";
+import { isForeseeing, type MediaProvider, type ProviderContext } from "./core/provider";
 import { ProviderRegistry } from "./core/registry";
 import { adoptPlainSecrets } from "./core/settings/secrets";
 import { ScoutSettings } from "./core/settings/store";
 import { ScoutSettingTab } from "./core/settings/tab";
 import { AniListProvider } from "./providers/anilist/provider";
+import { ItunesClient } from "./providers/itunes/client";
+import { MdbListClient } from "./providers/mdblist/client";
+import { OmdbClient } from "./providers/omdb/client";
+import { MusicBrainzProvider } from "./providers/musicbrainz/provider";
 import { OpenLibraryProvider } from "./providers/openlibrary/provider";
-import { RawgProvider } from "./providers/rawg/provider";
+import { IgdbProvider } from "./providers/igdb/provider";
 import { TmdbProvider } from "./providers/tmdb/provider";
 import { WebLinkProvider } from "./providers/weblink/provider";
 import { HOME_VIEW_TYPE, ScoutHomeView, openHome } from "./ui/homeView";
@@ -40,7 +47,8 @@ const PROVIDERS: {
 	{ id: "tmdb", create: (ctx) => new TmdbProvider(ctx) },
 	{ id: "openlibrary", create: (ctx) => new OpenLibraryProvider(ctx) },
 	{ id: "anilist", create: (ctx) => new AniListProvider(ctx) },
-	{ id: "rawg", create: (ctx) => new RawgProvider(ctx) },
+	{ id: "igdb", create: (ctx) => new IgdbProvider(ctx) },
+	{ id: "musicbrainz", create: (ctx) => new MusicBrainzProvider(ctx) },
 	{ id: "weblink", create: (ctx) => new WebLinkProvider(ctx) },
 ];
 
@@ -111,6 +119,41 @@ export default class ScoutPlugin extends Plugin {
 		const collector = new CollectionKeeper(this.settings, library, mutator);
 		const enricher = new LibraryEnricher(this.settings, registry, library);
 
+		// Not sources: none of these makes notes or answers a search. Each stays
+		// silent until you give it a key or turn it on.
+		const keyOf = (id: string) => () =>
+			this.settings.scopeFor(id).secret("apiKeySecret").trim();
+		const mdblist = new MdbListClient(http, keyOf("mdblist"));
+		const scorer = new ScoreKeeper(
+			this.settings,
+			library,
+			mdblist,
+			http,
+			() => this.settings.isProviderEnabled("openlibrary"),
+			// For the hype of films not out yet: TMDB, only while it is a
+			// source you use and have given a key.
+			async (ref, signal) => {
+				const tmdb = registry.get("tmdb");
+				if (!tmdb || !isForeseeing(tmdb) || !this.settings.isProviderEnabled("tmdb") || !tmdb.isConfigured()) {
+					return undefined;
+				}
+				return tmdb.outlook(ref, { signal });
+			},
+		);
+		const detail = new DetailService(
+			registry,
+			() => this.settings.library(),
+			mdblist,
+			new OmdbClient(http, keyOf("omdb")),
+			new ItunesClient(http, () =>
+				this.settings.scopeFor("itunes").get("enabled", false),
+			),
+			(id) => this.settings.isProviderEnabled(id),
+			(ref, readings, full) => scorer.record(ref, readings, full),
+			(ref) => this.settings.scores()[scoreKey(ref)]?.readings,
+			(ref, outlook) => scorer.recordOutlook(ref, outlook),
+		);
+
 		this.context = {
 			app: this.app,
 			settings: this.settings,
@@ -121,12 +164,14 @@ export default class ScoutPlugin extends Plugin {
 			refresher,
 			enricher,
 			collector,
+			detail,
 		};
 
 		// After load, not during it: the first run waits long enough that
 		// nothing about starting Obsidian is slower for it being installed.
 		refresher.start(this);
 		enricher.start(this);
+		scorer.start(this);
 		collector.register(this);
 
 		this.registerView(

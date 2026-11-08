@@ -1,3 +1,5 @@
+import type { ItemExtras } from "./detail/types";
+import type { Outlook } from "./hype";
 import type { HttpClient } from "./http";
 import type { ImportRecord } from "./import/types";
 import type { SettingDescriptor, SettingsScope } from "./settings/types";
@@ -36,6 +38,11 @@ export interface RequestContext {
 	 * use this so no already-known field is lost.
 	 */
 	previous?: MediaItem;
+	/**
+	 * ISO country code, for anything that differs by country: age ratings and
+	 * where a title is available.
+	 */
+	region?: string;
 }
 
 /** The base contract. Every provider satisfies this. */
@@ -63,6 +70,26 @@ export interface Searchable {
  */
 export interface Detailable {
 	details(ref: MediaRef, ctx: RequestContext): Promise<MediaItem>;
+}
+
+/**
+ * What is known about a film before it is out, for its hype: how its series
+ * and its directors have done before. A few requests, so asked for only about
+ * titles not out yet.
+ */
+export interface Foreseeing {
+	outlook(ref: MediaRef, ctx: RequestContext): Promise<Outlook | null>;
+}
+
+/**
+ * Everything the detail dialog shows beyond the record itself.
+ *
+ * Separate from `Detailable` because a note is made from that record and the
+ * background refresher reads it, and neither should pay for a cast list, a set
+ * of screenshots, and the streaming services of one country.
+ */
+export interface Extended {
+	extras(ref: MediaRef, ctx: RequestContext): Promise<ItemExtras>;
 }
 
 /** Turns a URL directly into an item, with no search step. */
@@ -210,6 +237,14 @@ export function isSearchable(p: MediaProvider): p is MediaProvider & Searchable 
 
 export function isDetailable(p: MediaProvider): p is MediaProvider & Detailable {
 	return typeof (p as Partial<Detailable>).details === "function";
+}
+
+export function isExtended(p: MediaProvider): p is MediaProvider & Extended {
+	return typeof (p as Partial<Extended>).extras === "function";
+}
+
+export function isForeseeing(p: MediaProvider): p is MediaProvider & Foreseeing {
+	return typeof (p as Partial<Foreseeing>).outlook === "function";
 }
 
 export function isResolvable(p: MediaProvider): p is MediaProvider & Resolvable {

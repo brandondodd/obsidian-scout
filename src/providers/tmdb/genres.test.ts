@@ -50,7 +50,12 @@ describe("genreIds", () => {
 	});
 
 	it("says nothing rather than guessing at a name it does not know", () => {
-		expect(genreIds(["Cyberpunk"], "movie")).toEqual([]);
+		expect(genreIds(["Gardening"], "movie")).toEqual([]);
+	});
+
+	it("reaches a sub-genre through its main genre", () => {
+		expect(genreIds(["Cyberpunk"], "movie")).toEqual([878]);
+		expect(genreIds(["Talk show"], "tv")).toEqual([10767]);
 	});
 
 	it("returns each id once, however many names lead to it", () => {

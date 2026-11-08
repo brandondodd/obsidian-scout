@@ -1,4 +1,5 @@
 import type { App } from "obsidian";
+import type { DetailService } from "./detail/service";
 import type { CollectionKeeper } from "./library/collector";
 import type { LibraryIndex } from "./library/indexer";
 import type { LibraryMutator } from "./library/mutate";
@@ -28,4 +29,6 @@ export interface ScoutContext {
 	enricher: LibraryEnricher;
 	/** Keeps automatic collections filled as the library changes. */
 	collector: CollectionKeeper;
+	/** Gathers what the detail dialog shows beyond a note's own record. */
+	detail: DetailService;
 }

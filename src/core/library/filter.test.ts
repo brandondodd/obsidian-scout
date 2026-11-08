@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { MediaKind } from "../types";
 import { defaultLibraryConfig, type LibraryConfig } from "./config";
 import type { LibraryEntry } from "./entry";
+import { scoutOfEntry } from "../scout-score";
 import {
 	collectTags,
 	emptyQuery,
@@ -48,7 +49,7 @@ const LIBRARY: LibraryEntry[] = [
 		year: 2016,
 		rating: 4.5,
 		status: "Watched",
-		tags: ["Drama", "Science Fiction"],
+		tags: ["Drama", "Science fiction"],
 		people: ["Denis Villeneuve"],
 		modified: 300,
 	}),
@@ -56,7 +57,7 @@ const LIBRARY: LibraryEntry[] = [
 		year: 2021,
 		rating: 4,
 		status: "Watching",
-		tags: ["Science Fiction"],
+		tags: ["Science fiction"],
 		people: ["Denis Villeneuve"],
 		favorite: true,
 		modified: 200,
@@ -148,18 +149,82 @@ describe("filterEntries", () => {
 		).toEqual(["Dune"]);
 	});
 
-	it("requires all of the selected tags", () => {
+	it("takes any of the selected genres, or all of them when asked", () => {
 		expect(
 			filterEntries(
 				LIBRARY,
 				query({ tags: ["drama", "science fiction"] }),
 				config,
 			).map((e) => e.title),
+		).toEqual(["Arrival", "Dune"]);
+		expect(
+			filterEntries(
+				LIBRARY,
+				query({ tags: ["drama", "science fiction"], genreMatch: "all" }),
+				config,
+			).map((e) => e.title),
 		).toEqual(["Arrival"]);
+	});
+
+	it("leaves out excluded genres, and reads sub-genres as their main genre", () => {
+		expect(
+			filterEntries(LIBRARY, query({ notTags: ["Drama"] }), config).map((e) => e.title),
+		).toEqual(["Dune", "Piranesi"]);
+		const urban = entry("Rivers of London", { kind: "book", tags: ["Urban fantasy"] });
+		expect(filterEntries([urban], query({ tags: ["Fantasy"] }), config)).toHaveLength(1);
+	});
+
+	it("filters by source score, years, and release", () => {
+		const now = new Date("2026-06-01");
+		const set = [
+			entry("Old", { year: 1999, sourceRating: 8.2 }),
+			entry("New", { year: 2024, sourceRating: 4.5 }),
+			entry("Soon", { year: 2027, releaseDate: "2027-03-01" }),
+		];
+		const titles = (q: Partial<LibraryQuery>) =>
+			filterEntries(set, query(q), config, now).map((e) => e.title);
+		expect(titles({ minSource: 7 })).toEqual(["Old"]);
+		expect(titles({ yearFrom: 2000 })).toEqual(["New", "Soon"]);
+		expect(titles({ yearFrom: 1990, yearTo: 2010 })).toEqual(["Old"]);
+		expect(titles({ release: "upcoming" })).toEqual(["Soon"]);
+		expect(titles({ release: "out" })).toEqual(["Old", "New"]);
+	});
+
+	it("finds unrated entries, and a person among several", () => {
+		expect(
+			filterEntries(LIBRARY, query({ rated: "unrated" }), config).map((e) => e.title),
+		).toEqual(["Piranesi"]);
+		expect(
+			filterEntries(
+				LIBRARY,
+				query({ people: ["Susanna Clarke", "Someone Else"] }),
+				config,
+			).map((e) => e.title),
+		).toEqual(["Piranesi"]);
 	});
 });
 
 describe("sortEntries", () => {
+	it("orders films not out yet by their hype, alongside Scout scores", () => {
+		const soon = { releaseDate: "2099-06-16", ref: { providerId: "tmdb", kind: "movie" as const, id: "1" } };
+		const strong = entry("Strong sequel", {
+			...soon,
+			readings: [{ source: "trakt", value: 6 }],
+			outlook: {
+				series: { name: "S", films: [{ title: "One", rating: 8.4 }, { title: "Two", rating: 8.3 }] },
+				genres: ["Animation"],
+			},
+		});
+		const weak = entry("Another weak sequel", {
+			...soon,
+			readings: [{ source: "trakt", value: 9 }],
+			outlook: { series: { name: "W", films: [{ title: "One", rating: 5.4 }] }, genres: ["Action"] },
+		});
+		const unknown = entry("Aaa nobody has looked into", soon);
+		const order = sortEntries([unknown, weak, strong], "source-desc", config).map((e) => e.title);
+		expect(order).toEqual(["Strong sequel", "Another weak sequel", "Aaa nobody has looked into"]);
+	});
+
 	it("sinks unrated entries to the bottom whichever way rating sorts", () => {
 		expect(
 			sortEntries(LIBRARY, "rating-desc", config).map((e) => e.title),
@@ -187,12 +252,24 @@ describe("sortEntries", () => {
 
 	it("puts your own verdict above a borrowed one at the same score", () => {
 		const entries = [
-			entry("Borrowed", { sourceRating: 8 }),
+			entry("Borrowed", { sourceRating: 6.6 }), // 8.0 as Scout shows it
 			entry("Mine", { rating: 4 }), // 4/5 — the same 80%
 		];
 		expect(
 			sortEntries(entries, "rating-desc", config).map((e) => e.title),
 		).toEqual(["Mine", "Borrowed"]);
+	});
+
+	it("orders by the unrounded Scout score when two show the same number", () => {
+		const reading = (value: number) => [{ source: "imdb", value, votes: 2_000_000 }];
+		const entries = [
+			entry("Able", { kind: "movie", readings: reading(8.95) }),
+			entry("Zed", { kind: "movie", readings: reading(8.97) }),
+		];
+		expect(scoutOfEntry(entries[0]!)).toBe(scoutOfEntry(entries[1]!));
+		expect(
+			sortEntries(entries, "rating-desc", config).map((e) => e.title),
+		).toEqual(["Zed", "Able"]);
 	});
 
 	/**
@@ -328,7 +405,7 @@ describe("groupEntries", () => {
 	it("orders genres by size, biggest shelf first", () => {
 		const groups = groupEntries(LIBRARY, "genre", config);
 		expect(groups.map((g) => g.label)).toEqual([
-			"Science Fiction",
+			"Science fiction",
 			"Drama",
 			"Fantasy",
 		]);
@@ -404,6 +481,6 @@ describe("libraryStats", () => {
 
 describe("collectTags", () => {
 	it("lists genres most common first", () => {
-		expect(collectTags(LIBRARY)[0]).toBe("Science Fiction");
+		expect(collectTags(LIBRARY)[0]).toBe("Science fiction");
 	});
 });

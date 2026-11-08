@@ -185,6 +185,20 @@ describe("buildEntry", () => {
 	});
 });
 
+describe("source ratings named for their source", () => {
+	const book = (rating: number) =>
+		buildEntry(config, note({ title: "Dark Matter", type: "book", goodreads_rating: rating }));
+
+	it("reads a Goodreads star average out of ten, on Goodreads' curve", () => {
+		expect(book(4.32)?.sourceRating).toBeCloseTo(8.64);
+		expect(book(4.32)?.ratingSource).toBe("goodreads");
+	});
+
+	it("leaves one another tool already wrote out of ten", () => {
+		expect(book(8.1)?.sourceRating).toBe(8.1);
+	});
+});
+
 describe("resolveKind", () => {
 	it("accepts the kind id, its label, and its aliases", () => {
 		expect(resolveKind(config, "tv")).toBe("tv");

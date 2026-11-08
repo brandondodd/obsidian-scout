@@ -36,6 +36,8 @@ export interface MediaCardProps {
 	favorite?: boolean;
 	/** The quiet line under the title. */
 	meta?: React.ReactNode;
+	/** A middle column in a list row, between the title and the foot. */
+	aside?: React.ReactNode;
 	/** The row under that: ratings, status chips, countdowns. */
 	foot?: React.ReactNode;
 	/** Anything drawn over the artwork — status pills, tick marks, actions. */
@@ -57,6 +59,7 @@ export default function MediaCard({
 	showKindBadge = true,
 	favorite = false,
 	meta,
+	aside,
 	foot,
 	overlay,
 	className = "",
@@ -108,6 +111,9 @@ export default function MediaCard({
 						)}
 						{meta}
 					</p>
+				)}
+				{aside !== undefined && aside !== null && (
+					<div className="scout-entry-aside">{aside}</div>
 				)}
 				<div className="scout-entry-foot">{foot}</div>
 			</div>

@@ -77,6 +77,8 @@ describe("buildStats", () => {
 		expect(year.heatmap.days[0]).toBeNull();
 		expect(year.heatmap.days.filter(Boolean)).toHaveLength(365);
 		expect(year.heatmap.max).toBe(1);
+		expect(year.heatmap.active).toBe(year.heatmap.days.filter((d) => d && d.count > 0).length);
+		expect(year.heatmap.streak).toBeGreaterThanOrEqual(1);
 	});
 
 	it("only reports time it can work out, and from how much", () => {
@@ -88,7 +90,7 @@ describe("buildStats", () => {
 
 	it("compares genres with the period's average", () => {
 		const drama = year.genres.find((g) => g.name === "Drama");
-		const scifi = year.genres.find((g) => g.name === "Science Fiction");
+		const scifi = year.genres.find((g) => g.name === "Science fiction");
 		expect(year.average).toBeCloseTo((0.9 + 0.7 + 1) / 3);
 		expect(drama?.count).toBe(2);
 		expect(drama?.delta).toBeCloseTo(0.8 - (0.9 + 0.7 + 1) / 3);

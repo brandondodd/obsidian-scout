@@ -23,5 +23,9 @@ export function hasEpisodes(
 ): boolean {
 	if (!source || !isEpisodicKind(kind)) return false;
 	const provider = ctx.registry.get(source.providerId);
-	return provider !== undefined && isEpisodic(provider);
+	return (
+		provider !== undefined &&
+		isEpisodic(provider) &&
+		ctx.settings.isProviderEnabled(provider.id)
+	);
 }

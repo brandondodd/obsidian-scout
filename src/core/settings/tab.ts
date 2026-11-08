@@ -4,6 +4,7 @@ import { backgroundSection } from "./sections/background";
 import { librarySection } from "./sections/library";
 import { notesSection } from "./sections/notes";
 import { propertiesSection } from "./sections/properties";
+import { scoresSection } from "./sections/scores";
 import { sourcesSection } from "./sections/sources";
 import { suggestionsSection } from "./sections/suggestions";
 import { trackingSection } from "./sections/tracking";
@@ -16,6 +17,7 @@ import type { SectionContext, SettingsSection } from "./sections/types";
  */
 const SECTIONS: readonly SettingsSection[] = [
 	sourcesSection,
+	scoresSection,
 	notesSection,
 	librarySection,
 	trackingSection,

@@ -34,7 +34,11 @@ export class HttpError extends Error {
 function explain(body: string): string | null {
 	if (!body) return null;
 	try {
-		const parsed = JSON.parse(body) as {
+		const json = JSON.parse(body) as unknown;
+		// IGDB answers with a list: `[{ "title": "Syntax Error", "cause": … }]`.
+		const parsed = (Array.isArray(json)
+			? { message: json[0]?.cause ?? json[0]?.title }
+			: json) as {
 			errors?: { message?: string }[];
 			status_message?: string;
 			error?: string | { message?: string };
@@ -80,6 +84,14 @@ export class HttpClient {
 	/** Most recent rate-limit hint seen, surfaced in settings for diagnosis. */
 	lastRateLimitAt: number | null = null;
 
+	/** Whether a GET would be answered from the cache, without asking the source. */
+	isCached(url: string, options: RequestOptions = {}): boolean {
+		return (
+			this.cache.get(`GET ${url} ${JSON.stringify(options.headers ?? {})}`) !==
+			undefined
+		);
+	}
+
 	async getJson<T>(url: string, options: RequestOptions = {}): Promise<T> {
 		const cacheKey = options.cacheTtlMs
 			? `GET ${url} ${JSON.stringify(options.headers ?? {})}`
@@ -114,7 +126,20 @@ export class HttpClient {
 		payload: unknown,
 		options: RequestOptions = {},
 	): Promise<T> {
-		const serialized = JSON.stringify(payload);
+		return this.post<T>(url, JSON.stringify(payload), "application/json", options);
+	}
+
+	/** A plain-text body answered with JSON, as IGDB's query language is sent. */
+	async postText<T>(url: string, body: string, options: RequestOptions = {}): Promise<T> {
+		return this.post<T>(url, body, "text/plain", options);
+	}
+
+	private async post<T>(
+		url: string,
+		serialized: string,
+		contentType: string,
+		options: RequestOptions,
+	): Promise<T> {
 		const cacheKey = options.cacheTtlMs
 			? `POST ${url} ${serialized} ${JSON.stringify(options.headers ?? {})}`
 			: null;
@@ -127,8 +152,8 @@ export class HttpClient {
 			{
 				url,
 				method: "POST",
-				contentType: "application/json",
-				headers: { "Content-Type": "application/json", ...options.headers },
+				contentType,
+				headers: { "Content-Type": contentType, ...options.headers },
 				body: serialized,
 			},
 			options,

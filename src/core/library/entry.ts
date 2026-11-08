@@ -4,6 +4,8 @@ import {
 	type MediaKind,
 	type MediaRef,
 } from "../types";
+import type { Outlook } from "../hype";
+import type { Reading } from "../scout-score";
 import {
 	FIELD_FALLBACKS,
 	splitList,
@@ -62,6 +64,18 @@ export interface LibraryEntry {
 	rating?: number;
 	/** The source's score, always out of ten — every provider normalizes to it. */
 	sourceRating?: number;
+	/**
+	 * Whose scale `sourceRating` is on when the property's name says so and no
+	 * source does — `goodreads_rating` on a note made by another tool.
+	 */
+	ratingSource?: string;
+	/**
+	 * What Scout's blended score is made from, when Scout has looked — see
+	 * `ScoreLog`. Not from the note: attached by the index from Scout's cache.
+	 */
+	readings?: readonly Reading[];
+	/** What was known of a film not out yet — see `hypeOf`. From Scout's cache too. */
+	outlook?: Outlook;
 	status?: string;
 	favorite: boolean;
 	progress?: number;
@@ -208,6 +222,40 @@ function read(
 }
 
 /**
+ * Fallback rating properties that name their source, and that source's scale.
+ * Goodreads is stars out of five; the rest are out of ten already.
+ */
+const RATING_SOURCES: Readonly<Record<string, { source: string; outOf: number }>> = {
+	tmdb_rating: { source: "tmdb", outOf: 10 },
+	imdb_rating: { source: "imdb", outOf: 10 },
+	anilist_rating: { source: "anilist", outOf: 10 },
+	goodreads_rating: { source: "goodreads", outOf: 5 },
+};
+
+/** The source score, out of ten, and whose it is when the property says. */
+function readSourceRating(
+	keys: Map<string, unknown>,
+	config: LibraryConfig,
+): Pick<LibraryEntry, "sourceRating" | "ratingSource"> {
+	const mapped = config.fields.sourceRating?.trim().toLowerCase();
+	const present = (key: string) => {
+		const value = keys.get(key);
+		return value !== undefined && value !== null && value !== "";
+	};
+	const key = mapped && present(mapped)
+		? mapped
+		: FIELD_FALLBACKS.sourceRating.find(present);
+	const value = key ? asNumber(keys.get(key)) : undefined;
+	if (value === undefined || !key) return {};
+	const known = RATING_SOURCES[key];
+	if (!known) return { sourceRating: value };
+	// Some tools write Goodreads' average out of ten under the same name; a
+	// star average never passes five, so only one that does not is rescaled.
+	const scaled = value <= known.outOf ? (value * 10) / known.outOf : value;
+	return { sourceRating: scaled, ratingSource: known.source };
+}
+
+/**
  * Properties that name whoever a thing is *by*, rather than whoever is in it.
  *
  * Not the `people` fallback list minus a few entries — a deliberately short one.
@@ -310,7 +358,7 @@ export function buildEntry(
 		ref: providerId && id ? { providerId, kind, id } : undefined,
 
 		rating: asNumber(read(keys, config, "rating")),
-		sourceRating: asNumber(read(keys, config, "sourceRating")),
+		...readSourceRating(keys, config),
 		status: asString(read(keys, config, "status")),
 		favorite: asBoolean(read(keys, config, "favorite")),
 		progress: asNumber(read(keys, config, "progress")),
@@ -359,6 +407,9 @@ export function sameEntry(a: LibraryEntry, b: LibraryEntry): boolean {
 		a.url === b.url &&
 		a.rating === b.rating &&
 		a.sourceRating === b.sourceRating &&
+		a.ratingSource === b.ratingSource &&
+		a.readings === b.readings &&
+		a.outlook === b.outlook &&
 		a.status === b.status &&
 		a.favorite === b.favorite &&
 		a.progress === b.progress &&

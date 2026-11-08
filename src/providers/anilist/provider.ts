@@ -1,10 +1,14 @@
+import { canonicalGenres, sourceGenresFor } from "../../core/genres/genres";
 import { fromAniList, type AniListListEntry } from "../../core/import/anilist";
 import type { ImportRecord } from "../../core/import/types";
+import type { ItemExtras } from "../../core/detail/types";
 import type {
 	Discoverable,
 	ListSource,
 	DiscoverQuery,
 	Enrichable,
+	Episodic,
+	Extended,
 	MediaProvider,
 	ProviderContext,
 	ProviderTraits,
@@ -15,11 +19,20 @@ import type {
 } from "../../core/provider";
 import type { SettingDescriptor } from "../../core/settings/types";
 import type {
+	EpisodeInfo,
 	FieldSchema,
 	MediaItem,
 	MediaKind,
 	MediaRef,
+	SeasonInfo,
 } from "../../core/types";
+import {
+	EXTRAS_QUERY,
+	toEpisodes,
+	toExtras,
+	toSeasons,
+	type AniListExtras,
+} from "./extras";
 
 /**
  * AniList (anime and manga).
@@ -270,7 +283,7 @@ function toItem(media: AniListMedia): MediaItem {
 		imageUrl: media.coverImage?.large,
 		thumbnailUrl: media.coverImage?.medium ?? media.coverImage?.large,
 		description: stripHtml(media.description),
-		tags: media.genres ?? [],
+		tags: canonicalGenres(kind, media.genres ?? []),
 		people: [...studios, ...staff],
 		externalUrl: media.siteUrl,
 		releaseDate: isoDate(media.startDate),
@@ -346,7 +359,9 @@ function aniListGenres(names: readonly string[]): string[] {
 	for (const raw of names) {
 		const key = raw.trim().toLowerCase();
 		const hit = known.get(key) ?? GENRE_ALIASES[key];
-		if (hit && !out.includes(hit)) out.push(hit);
+		// Scout's names for AniList's genres: "Magical girl", "Science fiction".
+		const found = hit ? [hit] : sourceGenresFor("anime", [raw], ANILIST_GENRES);
+		for (const one of found) if (!out.includes(one)) out.push(one);
 	}
 	return out.slice(0, 3);
 }
@@ -359,6 +374,8 @@ export class AniListProvider
 		Recommendable,
 		Discoverable,
 		Enrichable,
+		Episodic,
+		Extended,
 		ListSource
 {
 	readonly id = "anilist";
@@ -413,6 +430,49 @@ export class AniListProvider
 		return (response.data?.Page?.media ?? []).map((m) =>
 			this.applyTitlePreference(toItem(m), m),
 		);
+	}
+
+	/**
+	 * The dialog's one query. Seasons, episodes, and extras all read this same
+	 * response, so a title costs one request however many of them are asked for.
+	 */
+	private async fullRecord(
+		ref: MediaRef,
+		ctx: RequestContext,
+	): Promise<AniListExtras | null> {
+		const id = Number(ref.id);
+		if (!Number.isFinite(id)) return null;
+		const response = await this.ctx.http.postJson<
+			GraphQLResponse<{ Media?: AniListExtras }>
+		>(
+			ENDPOINT,
+			{ query: EXTRAS_QUERY, variables: { id } },
+			{ signal: ctx.signal, cacheTtlMs: 30 * 60 * 1000 },
+		);
+		if (response.errors?.length) {
+			throw new Error(response.errors[0]?.message ?? "AniList query failed");
+		}
+		return response.data?.Media ?? null;
+	}
+
+	async extras(ref: MediaRef, ctx: RequestContext): Promise<ItemExtras> {
+		const media = await this.fullRecord(ref, ctx);
+		if (!media) throw new Error("AniList returned nothing for this title");
+		return toExtras(media);
+	}
+
+	async seasons(ref: MediaRef, ctx: RequestContext): Promise<SeasonInfo[]> {
+		const media = await this.fullRecord(ref, ctx);
+		return media ? toSeasons(media) : [];
+	}
+
+	async episodes(
+		ref: MediaRef,
+		_season: number,
+		ctx: RequestContext,
+	): Promise<EpisodeInfo[]> {
+		const media = await this.fullRecord(ref, ctx);
+		return media ? toEpisodes(media) : [];
 	}
 
 	/** What AniList's own readers recommend to people who liked this one. */

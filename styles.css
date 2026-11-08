@@ -552,203 +552,2322 @@
 
 /* ============================================================ detail dialog */
 
+/* The approved design, on Obsidian's variables so that themes carry it. The
+   greys are mixed from the theme's own background and text rather than picked,
+   which keeps the same steps of contrast in light themes and dark ones. */
 .scout-detail-modal {
-	max-width: 680px;
-	/* The dialog's own skirt, cut to the same air the sides have. Obsidian
-	   leaves a deep one under the content for dialogs that end in a row of
-	   buttons; this one ends in a text area, and the gap under it read as the
-	   panel having lost something. */
-	padding-bottom: 16px;
+	--sd-bg: var(--modal-background, var(--background-primary));
+	--sd-tx: var(--text-normal);
+	--sd-mu: var(--text-muted);
+	--sd-fa: var(--text-faint);
+	--sd-ac: var(--interactive-accent);
+	--sd-st: var(--text-accent);
+	--sd-gr: var(--color-green);
+	--sd-fav: var(--color-pink, #ff5470);
+	--sd-bd: var(--background-modifier-border);
+	--sd-bg2: color-mix(in srgb, var(--sd-bg) 85%, #000);
+	--sd-el: color-mix(in srgb, var(--sd-tx) 5%, var(--sd-bg));
+	--sd-el2: color-mix(in srgb, var(--sd-tx) 10.5%, var(--sd-bg));
+	--sd-el3: color-mix(in srgb, var(--sd-tx) 16.5%, var(--sd-bg));
+	--sd-line: color-mix(in srgb, var(--sd-tx) 6%, var(--sd-bg));
+	--sd-edge: color-mix(in srgb, var(--sd-tx) 25%, var(--sd-bg));
+	--sd-tx2: color-mix(in srgb, var(--sd-tx) 88%, var(--sd-bg));
+	--sd-acs: color-mix(in srgb, var(--sd-ac) 15%, transparent);
+	--sd-st2: color-mix(in srgb, var(--sd-st) 65%, var(--sd-tx));
+	--sd-bar: color-mix(in srgb, var(--sd-ac) 28%, var(--sd-bg));
+	--sd-bar2: color-mix(in srgb, var(--sd-st) 60%, var(--sd-tx));
+	/* Motion: fast to arrive, soft to settle. */
+	--sd-ease: cubic-bezier(0.16, 1, 0.3, 1);
+	--sd-quick: 160ms;
+	--sd-slow: 340ms;
+
+	display: flex;
+	flex-direction: column;
+	width: 680px;
+	max-width: min(680px, 100%);
+	/* A fixed height: tabs of different lengths would otherwise resize the
+	   dialog under the pointer. */
+	height: min(720px, 85vh);
+	padding: 0;
+	overflow: hidden;
+	border-radius: 14px;
 }
 .scout-detail-modal .modal-header {
-	margin-bottom: 0;
+	display: none;
 }
 .scout-detail-modal .modal-content {
-	margin-bottom: 0;
-	padding-bottom: 0;
+	display: flex;
+	flex: 1;
+	min-height: 0;
+	margin: 0;
+	padding: 0;
+	overflow: hidden;
 }
-/* An inline element sits on a baseline, and the few pixels below it are for
-   descenders no text area has. Blocks do not. */
-.scout-thoughts textarea,
-.scout-episode-note {
+.sd-root {
+	flex: 1;
+	display: flex;
+	min-width: 0;
+	min-height: 0;
+	font-size: 14px;
+	line-height: 1.45;
+	color: var(--sd-tx);
+	background: var(--sd-bg);
+}
+/* The scroller carries the dialog's rounding itself. Clipped only by the modal,
+   its scrollbar and the artwork under it were drawn square into the corners.
+   The track is clear, so the hero's artwork runs to the edge behind the thumb. */
+.scout-detail-modal .modal-content,
+.sd-root,
+.sd-scroll {
+	border-radius: inherit;
+	corner-shape: inherit;
+}
+.sd-scroll {
+	flex: 1;
+	min-width: 0;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	scrollbar-width: thin;
+	scrollbar-color: var(--sd-el3) transparent;
+}
+/* Obsidian dresses every button. Almost nothing in this dialog is shaped like
+   one, so the slate is wiped and each control adds what it needs. */
+.sd-root button {
+	display: inline-block;
+	align-items: normal;
+	justify-content: normal;
+	gap: normal;
+	height: auto;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	border-radius: 0;
+	corner-shape: round;
+	background: none;
+	box-shadow: none;
+	color: inherit;
+	font: inherit;
+	white-space: normal;
+	user-select: auto;
+	/* Every control eases between its states; see "Motion" below. */
+	transition:
+		background-color var(--sd-quick) var(--sd-ease),
+		border-color var(--sd-quick) var(--sd-ease),
+		color var(--sd-quick) var(--sd-ease),
+		opacity var(--sd-quick) var(--sd-ease),
+		box-shadow var(--sd-quick) var(--sd-ease),
+		transform var(--sd-quick) var(--sd-ease);
+	cursor: pointer;
+	text-align: left;
+}
+.sd-root h2,
+.sd-root h3,
+.sd-root h4,
+.sd-root p {
+	margin: 0;
+}
+/* Obsidian gives headings the theme's colour, size, weight and tracking. The
+   design's headings are plain bold text that each section sizes itself. */
+.sd-root h2,
+.sd-root h3,
+.sd-root h4 {
+	color: inherit;
+	font-family: inherit;
+	font-size: inherit;
+	font-weight: 700;
+	font-style: inherit;
+	font-variant: normal;
+	letter-spacing: normal;
+	line-height: inherit;
+	text-transform: none;
+}
+.sd-root .sd-fillimg {
 	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	border-radius: inherit;
+}
+.sd-root .scout-icon {
+	display: inline-flex;
+	flex: none;
+}
+.sd-root .sd-bd-img {
+	position: absolute;
+	inset: 0;
+	background-size: cover;
+	background-position: center 20%;
+}
+.sd-root .sd-bd-soft {
+	filter: blur(28px);
+	transform: scale(1.15);
+}
+.sd-root .sd-still {
+	display: block;
+	overflow: hidden;
+}
+.sd-root .sd-dim {
+	opacity: 0.45;
+}
+.sd-root .sd-gap {
+	height: 14px;
+}
+.sd-root .sd-hint {
+	margin: 18px 24px 0;
+}
+.sd-root .scout-detail-why ul {
+	margin: 8px 0 0;
+}
+.sd-root .sd-kick-ok {
+	color: var(--sd-gr);
+}
+.sd-root .sd-you .scout-icon {
+	color: var(--sd-st);
+}
+.sd-root .sd-you svg {
+	fill: currentColor;
+}
+.sd-root .sd-solid-icon svg {
+	fill: currentColor;
+}
+.sd-root .sd-of {
+	font-weight: 400;
+	opacity: 0.7;
+}
+.sd-root .sd-saved {
+	margin-left: 8px;
+	font-size: 12px;
+	color: var(--sd-fa);
+}
+.sd-root * {
+	box-sizing:border-box;
+}
+.sd-root .sd-hero {
+	position:relative;
+	overflow:hidden;
+	padding:24px 24px 16px;
+}
+.sd-root .sd-bd {
+	position:absolute;
+	left:0;
+	right:0;
+	top:0;
+	height:300px;
+	opacity:.65;
+}
+.sd-root .sd-bd::after {
+	content:"";
+	position:absolute;
+	inset:0;
+	/* Firmer than the mockup's gradients needed: real backdrops can be bright
+	   and busy right where the header text sits. */
+	background:linear-gradient(90deg,color-mix(in srgb,var(--sd-bg) 92%,transparent),color-mix(in srgb,var(--sd-bg) 74%,transparent) 55%,color-mix(in srgb,var(--sd-bg) 50%,transparent)),linear-gradient(180deg,transparent 35%,var(--sd-bg));
+}
+.sd-root .sd-hero-in {
+	position:relative;
+	display:flex;
+	gap:22px;
+	align-items:flex-start;
+}
+.sd-root .sd-poster {
+	width:140px;
+	flex:none;
+	position:relative;
+}
+.sd-root .sd-pimg {
+	aspect-ratio:2/3;
+	border-radius:8px 8px 0 0;
+	display:flex;
+	align-items:flex-end;
+	justify-content:center;
+	padding-bottom:24%;
+	font-weight:800;
+	letter-spacing:.07em;
+	color:#fff;
+	text-shadow:0 2px 8px rgba(0,0,0,.7);
+	font-size:17px;
+	box-shadow:0 10px 28px rgba(0,0,0,.5);
+}
+.sd-root .sd-watchbar {
+	width:100%;
+	display:flex;
+	gap:8px;
+	align-items:center;
+	text-align:left;
+	background:var(--sd-bar);
+	border:0;
+	border-radius:0 0 8px 8px;
+	padding:7px 9px;
+	cursor:pointer;
+	line-height:1.2;
+}
+.sd-root .sd-watchbar small {
+	display:block;
+	font-size:10.5px;
+	color:var(--sd-bar2);
+}
+.sd-root .sd-watchbar b {
+	font-size:12px;
+	font-weight:600;
+}
+.sd-root .sd-logo {
+	width:24px;
+	height:24px;
+	border-radius:6px;
+	object-fit:cover;
+	flex:none;
+	display:block;
+}
+.sd-root .sd-head {
+	flex:1;
+	min-width:0;
+	padding-top:4px;
+}
+/* A soft halo in the dialog's own colour keeps text legible over light or
+   busy artwork, in light themes and dark ones. Controls have their own fills. */
+.sd-root .sd-hero .sd-head {
+	text-shadow:0 1px 2px color-mix(in srgb,var(--sd-bg) 70%,transparent),0 0 12px color-mix(in srgb,var(--sd-bg) 60%,transparent);
+}
+.sd-root .sd-hero .sd-scores,
+.sd-root .sd-hero .sd-actions {
+	text-shadow:none;
+}
+.sd-root .sd-head h2 {
+	margin:0 40px 6px 0;
+	font-size:30px;
+	line-height:1.15;
+	font-weight:700;
+	letter-spacing:-.01em;
+}
+.sd-root .sd-meta {
+	margin:0;
+	color:var(--sd-mu);
+	font-size:13.5px;
+	/* Each side of a rule: the design's 8px gap and 2px margin. */
+	--sd-fg:10px;
+}
+.sd-root .sd-sep {
+	color:var(--sd-fa);
+	display:inline-block;
+	vertical-align:-1px;
+	width:1px;
+	height:.9em;
+	background:color-mix(in srgb,var(--sd-tx) 32%,transparent);
+	margin:0 .6em;
+}
+.sd-root .sd-ep-m .sd-soon .sd-sep {
+	margin:0 2px;
+}
+.sd-root .sd-card .sd-sep,
+.sd-root .sd-kick .sd-sep,
+.sd-root .sd-m .sd-sep,
+.sd-root .sd-byline .sd-sep,
+.sd-root .sd-bio .sd-sep,
+.sd-root .sd-pp .sd-sep,
+.sd-root .sd-pdet .sd-sep,
+.sd-root .sd-upmore .sd-sep {
+	width:auto;
+	height:auto;
+	background:none;
+	vertical-align:baseline;
+	margin:0 .3em;
+}
+.sd-root .sd-card .sd-sep::before,
+.sd-root .sd-kick .sd-sep::before,
+.sd-root .sd-m .sd-sep::before,
+.sd-root .sd-byline .sd-sep::before,
+.sd-root .sd-bio .sd-sep::before,
+.sd-root .sd-pp .sd-sep::before,
+.sd-root .sd-pdet .sd-sep::before,
+.sd-root .sd-upmore .sd-sep::before {
+	content:"·";
+}
+.sd-root .sd-kind {
+	display:inline-flex;
+	gap:5px;
+	align-items:center;
+	color:var(--sd-tx);
+}
+.sd-root .sd-cert {
+	border:1px solid var(--sd-mu);
+	border-radius:3px;
+	padding:0 5px;
+	font-size:11.5px;
+	line-height:17px;
+	color:var(--sd-tx);
+}
+.sd-root .sd-tagline {
+	margin:10px 0 0;
+	font-style:italic;
+	color:var(--sd-mu);
+}
+.sd-root .sd-scores {
+	display:flex;
+	flex-wrap:wrap;
+	gap:6px;
+	margin:14px 0;
+}
+.sd-root .sd-score {
+	display:flex;
+	flex-direction:column;
+	justify-content:center;
+	min-width:58px;
+	padding:6px 10px;
+	border-radius:9px;
+	background:color-mix(in srgb,var(--sd-bg2) 80%,transparent);
+	-webkit-backdrop-filter:blur(8px);
+	backdrop-filter:blur(8px);
+	border:1px solid var(--sd-bd);
+	text-align:left;
+	line-height:1.2;
+}
+.sd-root .sd-score b {
+	font-size:16px;
+	font-weight:700;
+	display:flex;
+	align-items:center;
+	gap:5px;
+}
+.sd-root .sd-score span {
+	display:flex;
+	align-items:center;
+	gap:4px;
+	font-size:10.5px;
+	color:var(--sd-mu);
+	letter-spacing:.03em;
+	text-transform:uppercase;
+	margin-top:2px;
+}
+.sd-root .sd-score.sd-you {
+	border-color:color-mix(in srgb,var(--sd-st) 55%,transparent);
+	background:color-mix(in srgb,var(--sd-ac) 12%,transparent);
+}
+.sd-root .sd-score.sd-you b {
+	color:var(--sd-st);
+}
+.sd-root .sd-score.sd-empty {
+	border-style:dashed;
+}
+.sd-root .sd-score.sd-rt {
+	flex-direction:row;
+	justify-content:flex-start;
+	gap:14px;
+}
+.sd-root .sd-score.sd-rt>div {
+	display:flex;
+	flex-direction:column;
+}
+/* Scout's blend: the headline number, set apart from the sources it reads. */
+.sd-root .sd-score.sd-scout {
+	border-color:color-mix(in srgb,var(--sd-tx) 32%,transparent);
+	background:color-mix(in srgb,var(--sd-tx) 9%,var(--sd-bg2));
+}
+.sd-root .sd-score.sd-scout b {
+	color:var(--sd-tx);
+}
+/* The caption's words, trimmed to their capitals so an icon beside them
+   centres on the letters. Without support it is an ordinary inline box. */
+.sd-root .sd-score .sd-caption {
+	font-style:normal;
+	line-height:1;
+	text-box:trim-both cap alphabetic;
+}
+/* "+2 More": the scores behind it open in a popover on the document body. */
+.sd-root .sd-score.sd-more {
+	cursor:default;
+}
+.sd-root .sd-score.sd-more b {
+	color:var(--text-accent);
+}
+.sd-root .sd-score.sd-more:focus-visible {
+	outline:2px solid var(--sd-ac);
+	outline-offset:1px;
+}
+.scout-score-pop {
+	position:fixed;
+	z-index:var(--layer-tooltip, 70);
+	transform:translateX(-50%);
+	min-width:150px;
+	padding:6px 0;
+	border-radius:9px;
+	border:1px solid var(--background-modifier-border);
+	background:var(--background-secondary);
+	box-shadow:var(--shadow-s);
+	color:var(--text-normal);
+	font-size:13px;
+	pointer-events:none;
+	animation:scout-score-pop 120ms ease-out both;
+}
+.scout-score-pop-row {
+	display:flex;
+	align-items:baseline;
+	justify-content:space-between;
+	gap:18px;
+	padding:4px 12px;
+}
+.scout-score-pop-row span {
+	color:var(--text-muted);
+}
+.scout-score-pop-row b {
+	font-weight:700;
+	font-variant-numeric:tabular-nums;
+}
+@keyframes scout-score-pop {
+	from { opacity:0; transform:translate(-50%, -3px); }
+	to { opacity:1; transform:translate(-50%, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+	.scout-score-pop { animation:none; }
+}
+.sd-root .sd-actions {
+	display:flex;
+	flex-wrap:wrap;
+	gap:8px;
+}
+.sd-root .sd-btn {
+	display:inline-flex;
+	align-items:center;
+	gap:7px;
+	height:36px;
+	padding:0 14px;
+	border-radius:8px;
+	border:0;
+	background:var(--sd-el2);
+	cursor:pointer;
+	font-size:14px;
+	font-weight:500;
+	white-space:nowrap;
+	position:relative;
+}
+.sd-root .sd-btn:hover {
+	background:var(--sd-el3);
+}
+.sd-root .sd-btn.sd-cta {
+	background:var(--sd-ac);
+	color:#fff;
+}
+.sd-root .sd-btn.sd-cta:hover {
+	background:var(--interactive-accent-hover);
+}
+.sd-root .sd-btn.sd-icon {
+	width:36px;
+	padding:0;
+	justify-content:center;
+}
+.sd-root .sd-btn.sd-fav.sd-on {
+	color:var(--sd-fav);
+}
+.sd-root .sd-btn.sd-fav.sd-on svg {
+	fill:var(--sd-fav);
+}
+.sd-root .sd-btn.sd-sm {
+	height:30px;
+	padding:0 11px;
+	font-size:13px;
+}
+.sd-root .sd-btn.sd-ghost {
+	background:transparent;
+	border:1px solid var(--sd-edge);
+}
+.sd-root .sd-btn.sd-ghost:hover {
+	background:var(--sd-el2);
+}
+.sd-root .sd-body {
+	padding:12px 24px 0;
+}
+.sd-root .sd-desc {
+	margin:6px 0 0;
+	font-size:15px;
+	line-height:1.55;
+}
+.sd-root .sd-credits {
+	margin:10px 0 0;
+	color:var(--sd-mu);
+	font-size:13.5px;
+	display:flex;
+	gap:6px 20px;
+	flex-wrap:wrap;
+}
+.sd-root .sd-credits b {
+	color:var(--sd-tx);
+	font-weight:600;
+}
+.sd-root .sd-cont {
+	margin:18px 24px 0;
+	padding:12px;
+	border-radius:12px;
+	background:var(--sd-el);
+	border:1px solid var(--sd-bd);
+	display:grid;
+	grid-template-columns:176px 1fr;
+	gap:12px 14px;
+	align-items:center;
+}
+.sd-root .sd-cont .sd-still {
+	aspect-ratio:16/9;
+	border-radius:8px;
+}
+.sd-root .sd-kick {
+	font-size:11px;
+	font-weight:700;
+	letter-spacing:.06em;
+	text-transform:uppercase;
+	color:var(--sd-st);
+}
+.sd-root .sd-cont h4 {
+	margin:2px 0;
+	font-size:16.5px;
+}
+.sd-root .sd-m {
+	color:var(--sd-mu);
+	font-size:13px;
+	display:flex;
+	gap:5px;
+	align-items:center;
+}
+.sd-root .sd-acts {
+	display:flex;
+	gap:8px;
+	flex-wrap:wrap;
+	margin-top:10px;
+	align-items:center;
+}
+.sd-root .sd-cfoot {
+	grid-column:1/-1;
+	display:flex;
+	align-items:center;
+	gap:10px;
+	font-size:12.5px;
+	color:var(--sd-mu);
+	flex-wrap:wrap;
+}
+.sd-root .sd-prog {
+	flex:1;
+	min-width:80px;
+	height:5px;
+	border-radius:3px;
+	background:var(--sd-el3);
+	overflow:hidden;
+}
+.sd-root .sd-prog>div {
+	height:100%;
+	background:var(--sd-ac);
+	border-radius:3px;
+	transition:width .3s;
+}
+.sd-root .sd-prog.sd-done>div {
+	background:var(--sd-gr);
+}
+.sd-root .sd-undo {
+	color:var(--sd-st);
+	background:none;
+	border:0;
+	cursor:pointer;
+	padding:0;
+	font-size:12.5px;
+}
+.sd-root .sd-yours {
+	margin:18px 24px 0;
+	padding:6px 16px 6px;
+	border-radius:12px;
+	background:var(--sd-bg2);
+	border:1px solid var(--sd-bd);
+}
+.sd-root .sd-yh {
+	display:flex;
+	align-items:baseline;
+	justify-content:space-between;
+	gap:10px;
+	padding:12px 0 4px;
+	font-size:11px;
+	letter-spacing:.07em;
+	text-transform:uppercase;
+	color:var(--sd-fa);
+	font-weight:700;
+}
+.sd-root .sd-yh span {
+	font-weight:400;
+	text-transform:none;
+	letter-spacing:0;
+	font-size:12px;
+}
+.sd-root .sd-row {
+	display:grid;
+	grid-template-columns:104px 1fr;
+	gap:12px;
+	align-items:center;
+	padding:9px 0;
+	border-top:1px solid var(--sd-line);
+}
+.sd-root .sd-yours .sd-row:first-child {
+	border-top:0;
+}
+.sd-root .sd-row.sd-stack {
+	grid-template-columns:1fr;
+	gap:6px;
+}
+.sd-root .sd-lbl {
+	color:var(--sd-mu);
+	font-size:13.5px;
+}
+.sd-root .sd-ctl {
+	display:flex;
+	flex-wrap:wrap;
+	gap:6px 10px;
+	align-items:center;
+	min-width:0;
+	position:relative;
+}
+.sd-root .sd-rv {
+	font-size:13.5px;
+	color:var(--sd-mu);
+}
+.sd-root .sd-rv b {
+	color:var(--sd-tx);
+	font-size:15px;
+}
+.sd-root .sd-seg {
+	display:flex;
+	flex-wrap:wrap;
+	gap:2px;
+	background:var(--sd-el);
+	padding:3px;
+	border-radius:9px;
+}
+.sd-root .sd-seg button {
+	display:inline-flex;
+	align-items:center;
+	gap:6px;
+	border:0;
+	background:transparent;
+	padding:5px 10px;
+	border-radius:7px;
+	cursor:pointer;
+	font-size:13.5px;
+}
+.sd-root .sd-seg button:hover {
+	background:var(--sd-el2);
+}
+/* Obsidian's Inter sets about 7% wider than the design's type, so the status
+   row is a touch tighter to stay on one line at the dialog's full width. */
+.sd-root .sd-yours .sd-seg button {
+	gap:5px;
+	padding:5px 8px;
+}
+.sd-root .sd-seg button.sd-on {
+	background:var(--sd-ac);
+	color:#fff;
+}
+.sd-root .sd-seg button.sd-on.sd-done {
+	background:var(--sd-gr);
+}
+.sd-root .sd-linkbtn {
+	display:inline-flex;
+	gap:6px;
+	align-items:center;
+	background:none;
+	border:0;
+	color:var(--sd-st);
+	cursor:pointer;
+	padding:0;
+	font-size:13.5px;
+}
+.sd-root .sd-chip {
+	display:inline-flex;
+	align-items:center;
+	gap:6px;
+	padding:5px 12px;
+	border-radius:999px;
+	font-size:13.5px;
+	border:0;
+	cursor:pointer;
+}
+.sd-root .sd-chip.sd-on {
+	background:var(--sd-ac);
+	color:#fff;
+}
+.sd-root .sd-chip.sd-add {
+	background:var(--sd-el2);
+}
+.sd-root .sd-dates label {
+	display:flex;
+	gap:6px;
+	align-items:center;
+	font-size:13px;
+	color:var(--sd-mu);
+}
+.sd-root .sd-dates input {
+	background:var(--sd-el);
+	border:1px solid var(--sd-bd);
+	border-radius:7px;
+	color:var(--sd-tx);
+	padding:5px 8px;
+	font:inherit;
+	font-size:13px;
+}
+/* Obsidian pins the picker icon to the left over the text; the design has the
+   browser's own layout, icon on the right. */
+.sd-root .sd-dates input[type="date"]::-webkit-calendar-picker-indicator {
+	position:static;
+	opacity:.7;
+}
+.sd-root .sd-dates input[type="date"]::-webkit-datetime-edit-text {
+	color:inherit;
+	padding:0;
+}
+.sd-root .sd-dates input {
+	height:auto;
+	box-shadow:none;
+	corner-shape:round;
+}
+/* Obsidian leaves room on the left for the icon it moved there, through a
+   selector heavy enough that only a heavier one undoes it. */
+.scout-detail-modal .sd-root .sd-dates input[type="date"]:not([disabled]) {
+	padding-left:8px;
+}
+.sd-root .sd-md {
+	width:100%;
+	padding:10px 12px;
+	border-radius:8px;
+	background:var(--sd-el);
+	border:1px solid transparent;
+	cursor:text;
+	font-size:14.5px;
+	line-height:1.55;
+	color:var(--sd-tx);
+}
+.sd-root .sd-md:hover {
+	border-color:var(--sd-el3);
+}
+.sd-root .sd-md .sd-wl {
+	color:var(--link-color);
+	cursor:pointer;
+}
+.sd-root .sd-md .sd-wl:hover {
+	text-decoration:underline;
+}
+.sd-root .sd-md.sd-empty {
+	color:var(--sd-fa);
+}
+.sd-root textarea.sd-md {
+	min-height:130px;
+	resize:vertical;
+	font-family:inherit;
+	outline:none;
+	border-color:var(--sd-ac);
+}
+.sd-root .sd-sec {
+	margin:26px 24px 0;
+}
+.sd-root .sd-sec-h {
+	display:flex;
+	align-items:baseline;
+	justify-content:space-between;
+	margin-bottom:10px;
+	position:relative;
+}
+.sd-root .sd-sec-h h3 {
+	margin:0;
+	font-size:16.5px;
+	font-weight:650;
+}
+.sd-root .sd-cnt {
+	color:var(--sd-fa);
+	font-weight:500;
+	font-size:13.5px;
+	margin-left:4px;
+}
+.sd-root .sd-more {
+	display:inline-flex;
+	gap:2px;
+	align-items:center;
+	color:var(--sd-st);
+	font-size:13px;
+	cursor:pointer;
+}
+.sd-root .sd-more.sd-static {
+	cursor:default;
+}
+.sd-root .sd-wtw {
+	display:flex;
+	flex-wrap:wrap;
+	gap:12px 28px;
+}
+.sd-root .sd-wcred {
+	margin-left:auto;
+	align-self:flex-end;
+	font-size:12px;
+	color:var(--sd-fa);
+	padding-bottom:1px;
+}
+.sd-root .sd-wlab {
+	display:block;
+	font-size:11px;
+	letter-spacing:.06em;
+	text-transform:uppercase;
+	color:var(--sd-fa);
+	font-weight:700;
+	margin-bottom:6px;
+}
+.sd-root .sd-tiles {
+	display:flex;
+	gap:8px;
+	flex-wrap:wrap;
+}
+.sd-root .sd-tile {
+	display:inline-flex;
+	align-items:center;
+	gap:8px;
+	padding:5px 12px 5px 5px;
+	border-radius:9px;
+	background:var(--sd-el);
+	font-size:13px;
+}
+.sd-root .sd-tile .sd-logo {
+	width:28px;
+	height:28px;
+}
+.sd-root .sd-tile>span:last-child {
+	line-height:1.25;
+}
+.sd-root .sd-tile small {
+	display:block;
+	color:var(--sd-mu);
+	font-size:11.5px;
+}
+.sd-root .sd-rail {
+	display:flex;
+	gap:10px;
+	overflow-x:auto;
+	padding-bottom:6px;
+	scrollbar-width:thin;
+	scrollbar-color:var(--sd-el3) transparent;
+}
+.sd-root .sd-av {
+	width:76px;
+	height:76px;
+	border-radius:50%;
+	margin:0 auto 7px;
+	display:flex;
+	align-items:center;
+	justify-content:center;
+	font-weight:700;
+	font-size:20px;
+	color:rgba(255,255,255,.85);
+}
+.sd-root .sd-card {
+	width:96px;
+	flex:none;
+}
+.sd-root .sd-pimg2 {
+	aspect-ratio:2/3;
+	border-radius:7px;
+	position:relative;
+	display:flex;
+	align-items:flex-end;
+	padding:8px;
+	font-weight:800;
+	font-size:11.5px;
+	color:#fff;
+	letter-spacing:.04em;
+	text-shadow:0 1px 6px rgba(0,0,0,.8);
+	text-transform:uppercase;
+}
+.sd-root .sd-inlib {
+	position:absolute;
+	top:6px;
+	right:6px;
+	width:22px;
+	height:22px;
+	border-radius:50%;
+	background:var(--sd-gr);
+	display:flex;
+	align-items:center;
+	justify-content:center;
+	color:#fff;
+}
+.sd-root .sd-card b {
+	display:block;
+	font-size:12.5px;
+	margin-top:6px;
+	font-weight:600;
+	white-space:nowrap;
+	overflow:hidden;
+	text-overflow:ellipsis;
+}
+.sd-root .sd-card span {
+	font-size:11.5px;
+	color:var(--sd-mu);
+}
+.sd-root .sd-facts {
+	display:grid;
+	grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+	gap:10px 18px;
+	margin:0;
+}
+.sd-root .sd-facts dt {
+	font-size:11.5px;
+	color:var(--sd-fa);
+}
+.sd-root .sd-facts dd {
+	margin:2px 0 0;
+	font-size:13.5px;
+}
+.sd-root .sd-kw {
+	display:flex;
+	flex-wrap:wrap;
+	gap:6px;
+	margin-top:14px;
+}
+.sd-root .sd-kw span {
+	padding:3px 10px;
+	border-radius:6px;
+	background:var(--sd-el);
+	font-size:12.5px;
+	color:var(--sd-mu);
+}
+.sd-root .sd-links {
+	display:flex;
+	flex-wrap:wrap;
+	gap:8px;
+	margin-top:14px;
+}
+.sd-root .sd-ep-page {
+	padding:0 24px 24px;
+}
+.sd-root .sd-ep-prog {
+	display:flex;
+	align-items:center;
+	gap:12px;
+	position:relative;
+	flex-wrap:wrap;
+}
+.sd-root .sd-ep-prog .sd-prog {
+	flex:none;
+	width:120px;
+	height:6px;
+}
+.sd-root .sd-ep-prog p {
+	margin:0;
+	color:var(--sd-mu);
+	font-size:13.5px;
+}
+.sd-root .sd-ep-prog b {
+	color:var(--sd-tx);
+}
+.sd-root .sd-season-h {
+	display:flex;
+	justify-content:space-between;
+	align-items:center;
+	gap:10px;
+	flex-wrap:wrap;
+	padding:14px 0 10px;
+}
+.sd-root .sd-season-h b {
+	font-size:15.5px;
+}
+.sd-root .sd-season-h .sd-mu {
+	color:var(--sd-mu);
+	font-size:13.5px;
+	margin-left:4px;
+}
+.sd-root .sd-donelbl {
+	display:inline-flex;
+	gap:6px;
+	align-items:center;
+	color:var(--sd-gr);
+	font-size:13px;
+}
+.sd-root .sd-strip {
+	display:flex;
+	gap:5px;
+	height:90px;
+}
+.sd-root .sd-bar {
+	flex:1;
+	min-width:0;
+	display:flex;
+	flex-direction:column;
+	background:none;
+	border:0;
+	padding:0;
+	cursor:pointer;
+}
+.sd-root .sd-cw {
+	flex:1;
+	min-height:0;
+	display:flex;
+	flex-direction:column;
+	justify-content:flex-end;
+}
+.sd-root .sd-val {
+	font-size:11px;
+	line-height:16px;
+	font-weight:600;
+	text-align:center;
+	color:var(--sd-tx);
+}
+.sd-root .sd-col {
+	display:block;
+	border-radius:4px 4px 1px 1px;
+	background:var(--sd-edge);
+}
+.sd-root .sd-bar:hover .sd-col {
+	filter:brightness(1.25);
+}
+.sd-root .sd-bar.sd-w .sd-col {
+	background:var(--sd-ac);
+}
+.sd-root .sd-bar.sd-un .sd-col {
+	background:transparent;
+	border:1px dashed var(--sd-edge);
+}
+.sd-root .sd-lab2 {
+	font-size:11px;
+	color:var(--sd-fa);
+	text-align:center;
+	margin-top:4px;
+}
+.sd-root .sd-lab2.sd-nx {
+	color:var(--sd-st);
+	font-weight:600;
+}
+.sd-root .sd-eplist {
+	list-style:none;
+	margin:12px 0 0;
+	padding:0;
+}
+.sd-root .sd-ep {
+	display:grid;
+	grid-template-columns:38px 148px 1fr;
+	gap:14px;
+	padding:12px 10px 12px 4px;
+	border-top:1px solid var(--sd-line);
+	border-radius:10px;
+	align-items:start;
+	position:relative;
+}
+.sd-root .sd-ep:first-child,
+.sd-root .sd-ep.sd-next,
+.sd-root .sd-ep.sd-next+.sd-ep,
+.sd-root .sd-gapli+.sd-ep {
+	border-top-color:transparent;
+}
+.sd-root .sd-ep.sd-next {
+	background:var(--sd-el);
+}
+.sd-root .sd-ep.sd-flash {
+	animation:sd-flash 1.4s;
+}
+@keyframes sd-flash {0%{background:color-mix(in srgb,var(--sd-ac) 35%,transparent)}100%{background:transparent}}
+.sd-root .sd-ring {
+	position:relative;
+	width:32px;
+	height:32px;
+	border-radius:50%;
+	border:2px solid var(--sd-edge);
+	background:transparent;
+	display:flex;
+	align-items:center;
+	justify-content:center;
+	cursor:pointer;
+	margin:4px 0 0 2px;
+	color:var(--sd-mu);
+	font-size:13px;
+	font-weight:600;
+	padding:0;
+}
+.sd-root .sd-ring svg {
+	display:none;
+}
+.sd-root .sd-ring:hover {
+	border-color:var(--sd-ac);
+	color:var(--sd-st);
+}
+.sd-root .sd-ring.sd-on {
+	background:var(--sd-ac);
+	border-color:var(--sd-ac);
+	color:#fff;
+}
+.sd-root .sd-ring.sd-on .sd-num {
+	display:none;
+}
+.sd-root .sd-ring.sd-on svg {
+	display:block;
+}
+.sd-root .sd-ring.sd-dis {
+	border-style:dashed;
+	border-color:var(--sd-edge);
+	color:var(--sd-fa);
+	cursor:default;
+}
+.sd-root .sd-ep .sd-still {
+	aspect-ratio:16/9;
+	border-radius:7px;
+}
+.sd-root .sd-ep-b {
+	min-width:0;
+}
+.sd-root .sd-ep-t {
+	display:flex;
+	align-items:center;
+	gap:8px;
+	flex-wrap:wrap;
+}
+.sd-root .sd-ep-t .sd-t {
+	font-weight:600;
+	font-size:15px;
+}
+.sd-root .sd-badge {
+	font-size:11px;
+	font-weight:700;
+	padding:1px 8px;
+	border-radius:999px;
+	background:var(--sd-ac);
+	color:#fff;
+}
+.sd-root .sd-ep-m {
+	font-size:12.5px;
+	color:var(--sd-mu);
+	margin-top:1px;
+	position:relative;
+	/* The design's 6px gap and 2px margin. */
+	--sd-fg:8px;
+}
+/* A row of facts whose rules never hang at a line end: see Facts. Clipped
+   across only, so the halo and the age badge are not cut top and bottom. */
+.sd-root .sd-frow {
+	overflow-x:clip;
+}
+.sd-root .sd-frow-in {
+	display:flex;
+	flex-wrap:wrap;
+	align-items:center;
+	row-gap:4px;
+	margin-left:calc(-2 * var(--sd-fg) - 1px);
+}
+.sd-root .sd-fact {
+	display:inline-flex;
+	align-items:center;
+	min-width:0;
+}
+.sd-root .sd-frow .sd-sep {
+	flex:none;
+	margin:0 var(--sd-fg);
+}
+.sd-root .sd-syn {
+	margin:6px 0 0;
+	font-size:13.5px;
+	line-height:1.5;
+	color:var(--sd-tx2);
+}
+.sd-root .sd-ep-a {
+	display:flex;
+	gap:16px;
+	align-items:center;
+	margin-top:8px;
+	min-height:22px;
+	flex-wrap:wrap;
+}
+.sd-root .sd-rate {
+	display:inline-flex;
+	align-items:center;
+	gap:5px;
+	background:none;
+	border:0;
+	padding:0;
+	color:var(--sd-mu);
+	cursor:pointer;
+	font-size:13px;
+	position:relative;
+}
+.sd-root .sd-rate:hover {
+	color:var(--sd-st);
+}
+.sd-root .sd-myr {
+	display:inline-flex;
+	gap:4px;
+	align-items:center;
+	padding:1px 9px;
+	border-radius:999px;
+	background:var(--sd-acs);
+	color:var(--sd-st);
+	font-size:12.5px;
+	font-weight:600;
+	border:0;
+	cursor:pointer;
+	position:relative;
+}
+.sd-root .sd-addnote {
+	opacity:0;
+	transition:opacity .15s;
+}
+.sd-root .sd-ep:hover .sd-addnote,
+.sd-root .sd-ep.sd-next .sd-addnote,
+.sd-root .sd-addnote:focus {
+	opacity:1;
+}
+.sd-root .sd-note {
+	font-size:13px;
+	color:var(--sd-mu);
+	font-style:italic;
+	cursor:text;
+}
+.sd-root .sd-noteedit {
+	flex-basis:100%;
+	min-height:54px;
+	background:var(--sd-bg2);
+	border:1px solid var(--sd-ac);
+	border-radius:7px;
+	color:var(--sd-tx);
+	padding:7px 9px;
+	font:inherit;
+	font-size:13.5px;
+	outline:none;
+	resize:vertical;
+}
+.sd-root .sd-ep.sd-up {
+	grid-template-columns:38px 1fr;
+	padding-top:9px;
+	padding-bottom:9px;
+}
+.sd-root .sd-ep.sd-up .sd-t {
+	font-weight:500;
+	color:var(--sd-mu);
+}
+.sd-root .sd-soon {
+	color:var(--sd-st2);
+	display:inline-flex;
+	gap:5px;
+	align-items:center;
+}
+.sd-root .sd-upmore {
+	list-style:none;
+}
+.sd-root .sd-upmore button {
+	width:100%;
+	display:flex;
+	gap:8px;
+	align-items:center;
+	text-align:left;
+	border:0;
+	border-top:1px solid var(--sd-line);
+	background:none;
+	color:var(--sd-mu);
+	padding:11px 4px 11px 14px;
+	cursor:pointer;
+	font-size:13.5px;
+	border-radius:0;
+}
+.sd-root .sd-upmore button:hover {
+	color:var(--sd-tx);
+}
+.sd-root .sd-gapli {
+	list-style:none;
+	margin:0 0 8px 46px;
+	padding:9px 12px;
+	border-radius:9px;
+	background:var(--sd-acs);
+	display:flex;
+	gap:10px;
+	align-items:center;
+	flex-wrap:wrap;
+	font-size:13.5px;
+}
+.sd-root .sd-gapli>span {
+	flex:1;
+	min-width:160px;
+}
+.sd-root .sd-heat {
+	overflow-x:auto;
+	margin-top:4px;
+}
+.sd-root .sd-heat table {
+	border-collapse:separate;
+	border-spacing:4px;
+	width:100%;
+	min-width:calc(84px + var(--mx)*52px);
+	table-layout:fixed;
+}
+.sd-root .sd-heat thead th:first-child {
+	width:30px;
+}
+.sd-root .sd-heat thead th:last-child {
+	width:44px;
+}
+.sd-root .sd-heat th {
+	font-size:11.5px;
+	color:var(--sd-fa);
+	font-weight:600;
+	padding:0 4px;
+}
+.sd-root .sd-heat td {
+	padding:0;
+}
+.sd-root .sd-heat td button {
+	display:block;
+	position:relative;
+	width:100%;
+	height:36px;
+	padding:0;
+	border:0;
+	border-radius:6px;
+	font-weight:600;
+	font-size:12.5px;
+	cursor:pointer;
+}
+.sd-root .sd-heat td button:hover {
+	outline:2px solid #fff;
+}
+.sd-root .sd-heat td button.sd-none {
+	background:color-mix(in srgb,var(--sd-tx) 5%,transparent);
+}
+.sd-root .sd-bst {
+	font-size:16px;
+	line-height:1;
+	margin-right:4px;
+	vertical-align:-1px;
+}
+.sd-root .sd-heat td.sd-avg {
+	font-size:13px;
+	font-weight:600;
+	color:var(--sd-tx);
+	text-align:center;
+}
+.sd-root .sd-legend {
+	display:flex;
+	align-items:center;
+	gap:8px;
+	font-size:12px;
+	color:var(--sd-mu);
+	margin-top:8px;
+	flex-wrap:wrap;
+}
+.sd-root .sd-legend .sd-g {
+	display:flex;
+	gap:2px;
+}
+.sd-root .sd-legend .sd-g i {
+	width:22px;
+	height:10px;
+	border-radius:2px;
+}
+.sd-root .sd-srcrow {
+	display:flex;
+	align-items:center;
+	justify-content:space-between;
+	flex-wrap:wrap;
+	gap:10px 16px;
+	margin-top:10px;
+	font-size:13px;
+	color:var(--sd-mu);
+}
+.sd-root .sd-srcl {
+	display:flex;
+	align-items:center;
+	gap:10px;
+}
+.sd-root .sd-srcrow .sd-legend {
+	margin-top:0;
+	cursor:help;
+}
+.sd-root .sd-srcrow .sd-seg button {
+	padding:4px 10px;
+	font-size:13px;
+	color:var(--sd-tx);
+}
+.sd-root .sd-srcrow .sd-seg button.sd-on {
+	color:#fff;
+}
+.sd-root .sd-legend b {
+	color:var(--sd-tx);
+}
+.sd-root .sd-stick {
+	position:sticky;
+	top:0;
+	z-index:5;
+	background:var(--sd-bg);
+}
+.sd-root .sd-tabs {
+	display:flex;
+	gap:20px;
+	padding:0 24px;
+	border-bottom:1px solid var(--sd-bd);
+	overflow-x:auto;
+	scrollbar-width:none;
+}
+.sd-root .sd-tab {
+	background:none;
+	border:0;
+	border-bottom:2px solid transparent;
+	padding:10px 0 8px;
+	color:var(--sd-mu);
+	cursor:pointer;
+	font-size:14px;
+	font-weight:500;
+	white-space:nowrap;
+}
+.sd-root .sd-tab:hover {
+	color:var(--sd-tx);
+}
+.sd-root .sd-tab.sd-on {
+	color:var(--sd-tx);
+	border-bottom-color:var(--sd-ac);
+}
+.sd-root .sd-tab span {
+	color:var(--sd-fa);
+	font-size:12.5px;
+	margin-left:4px;
+}
+.sd-root .sd-stuck-t {
+	margin-left:auto;
+	padding:10px 40px 8px 12px;
+	font-weight:600;
+	font-size:14px;
+	white-space:nowrap;
+	opacity:0;
+	transition:opacity .15s;
+	pointer-events:none;
+}
+.sd-root .sd-stick.is-stuck .sd-stuck-t {
+	opacity:1;
+}
+.sd-root .sd-head .sd-ep-prog {
+	margin-top:9px;
+	gap:10px;
+}
+.sd-root .sd-head .sd-ep-prog .sd-prog {
+	width:96px;
+}
+.sd-root .sd-airtxt {
+	display:inline-flex;
+	gap:5px;
+	align-items:center;
+	color:var(--sd-st2);
+}
+.sd-root .sd-byline {
+	margin:-2px 0 6px;
+	font-size:15px;
+	color:var(--sd-tx);
+}
+.sd-root .sd-pimg {
+	text-align:center;
+}
+.sd-root .sd-pimg.sd-solo {
+	border-radius:8px;
+}
+.sd-root .sd-poster.sd-wide {
+	width:196px;
+}
+.sd-root .sd-poster.sd-wide .sd-pimg {
+	aspect-ratio:16/9;
+	padding-bottom:9%;
+	font-size:15px;
+}
+.sd-root .sd-poster.sd-sq {
+	width:150px;
+}
+.sd-root .sd-poster.sd-sq .sd-pimg {
+	aspect-ratio:1;
+	padding-bottom:12%;
+	font-size:15px;
+}
+.sd-root .sd-card.sd-wide {
+	width:168px;
+}
+.sd-root .sd-card.sd-wide .sd-pimg2 {
+	aspect-ratio:16/9;
+}
+.sd-root .sd-card.sd-sq {
+	width:112px;
+}
+.sd-root .sd-card.sd-sq .sd-pimg2 {
+	aspect-ratio:1;
+}
+.sd-root .sd-card .sd-inlib {
+	top:6px;
+	right:6px;
+	width:24px;
+	height:24px;
+	background:#16a34a;
+	color:#fff;
+	box-shadow:0 1px 4px rgba(0,0,0,.4);
+}
+.sd-root .sd-inlib svg {
+	stroke-width:3.4;
+}
+.sd-root .sd-facts .sd-wide {
+	grid-column:1/-1;
+}
+.sd-root .sd-facts dd small {
+	color:var(--sd-mu);
+	font-size:12.5px;
+}
+.sd-root .sd-rail {
+	padding-top:3px;
+}
+.sd-root .sd-pp {
+	background:none;
+	border:0;
+	padding:0;
+	cursor:pointer;
+	color:inherit;
+	font:inherit;
+}
+.sd-root .sd-av {
+	position:relative;
+}
+.sd-root .sd-lb {
+	position:absolute;
+	right:0;
+	bottom:0;
+	min-width:22px;
+	height:22px;
+	padding:0 5px;
+	border-radius:11px;
+	background:var(--sd-ac);
+	color:#fff;
+	font-size:12px;
+	font-weight:700;
+	display:flex;
+	align-items:center;
+	justify-content:center;
+}
+.sd-root .sd-pp.sd-sel .sd-av {
+	box-shadow:0 0 0 2px var(--sd-st);
+}
+.sd-root .sd-pp.sd-sel b {
+	color:var(--sd-st);
+}
+.sd-root .sd-pgrid {
+	display:grid;
+	grid-template-columns:repeat(2,minmax(0,1fr));
+	gap:4px 16px;
+}
+.sd-root .sd-pgrid .sd-pp {
+	display:flex;
+	align-items:center;
+	gap:12px;
+	text-align:left;
+	padding:6px;
+	border-radius:9px;
+	min-width:0;
+}
+.sd-root .sd-pgrid .sd-pp:hover {
+	background:var(--sd-el);
+}
+.sd-root .sd-pgrid .sd-pp.sd-sel {
+	background:var(--sd-el);
+}
+.sd-root .sd-pgrid .sd-av {
+	width:46px;
+	height:46px;
+	font-size:14px;
+	margin:0;
+	flex:none;
+}
+.sd-root .sd-pgrid .sd-lb {
+	right:-3px;
+	bottom:-3px;
+	min-width:18px;
+	height:18px;
+	font-size:11px;
+	border-radius:9px;
+	padding:0 4px;
+}
+.sd-root .sd-pgrid .sd-pt {
+	min-width:0;
+}
+.sd-root .sd-pgrid b {
+	display:block;
+	font-size:14px;
+	font-weight:600;
+	line-height:1.3;
+	white-space:nowrap;
+	overflow:hidden;
+	text-overflow:ellipsis;
+}
+.sd-root .sd-pgrid .sd-pt span.sd-d {
+	display:block;
+	font-size:12.5px;
+	color:var(--sd-mu);
+	line-height:1.3;
+	white-space:nowrap;
+	overflow:hidden;
+	text-overflow:ellipsis;
+}
+.sd-root .sd-pdet {
+	margin-top:10px;
+	padding:12px 14px;
+	border-radius:10px;
+	background:var(--sd-el);
+	display:flex;
+	gap:12px;
+	align-items:flex-start;
+}
+.sd-root .sd-pdet>div {
+	flex:1;
+	min-width:0;
+}
+.sd-root .sd-pdet b {
+	font-size:14.5px;
+	font-weight:600;
+}
+.sd-root .sd-pdet .sd-pd {
+	display:block;
+	font-size:13px;
+	color:var(--sd-mu);
+	margin-top:1px;
+}
+.sd-root .sd-plib {
+	display:flex;
+	flex-wrap:wrap;
+	gap:6px 8px;
+	align-items:center;
+	margin-top:9px;
+	font-size:12.5px;
+	color:var(--sd-mu);
+}
+.sd-root .sd-ptitle {
+	display:inline-flex;
+	align-items:center;
+	gap:6px;
+	padding:3px 9px 3px 3px;
+	border-radius:6px;
+	background:var(--sd-el2);
+	font-size:12.5px;
+	color:var(--sd-tx);
+}
+.sd-root .sd-ptitle i {
+	width:16px;
+	height:24px;
+	border-radius:3px;
+	display:block;
+}
+.sd-root .sd-facts.sd-crew {
+	display:flex;
+	flex-wrap:wrap;
+	gap:10px 36px;
+	margin:0 0 16px;
+}
+.sd-root .sd-cont.sd-slim {
+	grid-template-columns:1fr auto;
+}
+.sd-root .sd-cont.sd-slim h4 {
+	display:flex;
+	align-items:center;
+	gap:7px;
+	flex-wrap:wrap;
+}
+.sd-root .sd-stepin {
+	width:66px;
+	height:30px;
+	background:var(--sd-bg2);
+	border:1px solid var(--sd-bd);
+	border-radius:7px;
+	color:var(--sd-tx);
+	font:inherit;
+	font-size:15px;
+	font-weight:600;
+	padding:0 6px;
+	text-align:center;
+}
+.sd-root .sd-cont.sd-slim .sd-acts {
+	margin-top:0;
+	justify-content:flex-end;
+}
+.sd-root .sd-bio {
+	display:flex;
+	gap:14px;
+	align-items:flex-start;
+}
+.sd-root .sd-bio .sd-av {
+	flex:none;
+	margin:0;
+}
+.sd-root .sd-bio p {
+	margin:0;
+	font-size:14px;
+	line-height:1.5;
+}
+.sd-root .sd-bio small {
+	display:block;
+	margin-top:4px;
+	color:var(--sd-mu);
+	font-size:12.5px;
+}
+.sd-root .sd-shots {
+	display:grid;
+	grid-template-columns:repeat(3,1fr);
+	gap:8px;
+}
+.sd-root .sd-shot {
+	aspect-ratio:16/9;
+	border-radius:7px;
+	border:0;
+	padding:0;
+	cursor:pointer;
+}
+.sd-root .sd-vids {
+	display:grid;
+	grid-template-columns:repeat(2,1fr);
+	gap:8px;
+}
+.sd-root .sd-vid {
+	aspect-ratio:16/9;
+	border-radius:8px;
+	display:flex;
+	align-items:center;
+	justify-content:center;
+	position:relative;
+}
+.sd-root .sd-vid span {
+	width:42px;
+	height:42px;
+	border-radius:50%;
+	background:rgba(0,0,0,.6);
+	display:flex;
+	align-items:center;
+	justify-content:center;
+	color:#fff;
+}
+.sd-root .sd-vid em {
+	position:absolute;
+	left:10px;
+	bottom:7px;
+	font-style:normal;
+	font-size:12.5px;
+	font-weight:600;
+	text-shadow:0 1px 4px rgba(0,0,0,.8);
+}
+.sd-root .sd-tracks {
+	list-style:none;
+	margin:14px 0 0;
+	padding:0;
+}
+.sd-root .sd-tr {
+	display:grid;
+	grid-template-columns:26px 1fr auto 26px 42px;
+	gap:10px;
+	align-items:center;
+	padding:9px 4px;
+	border-top:1px solid var(--sd-line);
+	font-size:14px;
+}
+.sd-root .sd-tr:first-child {
+	border-top:0;
+}
+.sd-root .sd-tr .sd-n {
+	color:var(--sd-fa);
+	font-size:13px;
+	text-align:right;
+}
+.sd-root .sd-tr .sd-tt small {
+	display:block;
+	color:var(--sd-mu);
+	font-size:12px;
+}
+.sd-root .sd-tr .sd-len {
+	color:var(--sd-mu);
+	font-size:13px;
+	text-align:right;
+}
+.sd-root .sd-hearts {
+	display:flex;
+	align-items:center;
+	justify-content:center;
+	background:none;
+	border:0;
+	padding:0;
+	color:var(--sd-fa);
+	cursor:pointer;
+}
+.sd-root .sd-hearts:hover {
+	color:var(--sd-tx);
+}
+.sd-root .sd-hearts.sd-on {
+	color:var(--sd-fav);
+}
+.sd-root .sd-hearts.sd-on svg {
+	fill:var(--sd-fav);
+}
+.sd-root .sd-tool {
+	display:flex;
+	justify-content:flex-start;
+	align-items:center;
+	gap:14px;
+	padding:18px 24px 8px;
+	border-bottom:1px solid transparent;
+}
+.sd-root .sd-stick.is-stuck .sd-tool {
+	border-bottom-color:var(--sd-bd);
+}
+.sd-root .sd-tool .sd-seg {
+	flex:none;
+	flex-wrap:nowrap;
+}
+.sd-root .sd-tool .sd-legend {
+	margin:0 0 0 auto;
+	cursor:help;
+}
+.sd-root .sd-tool .sd-srcl {
+	font-size:13px;
+	color:var(--sd-mu);
+}
+.sd-root .sd-ep-page>.sd-strip:first-child {
+	margin-top:8px;
+}
+.sd-root .sd-sumwrap {
+	display:flex;
+	gap:18px;
+	align-items:stretch;
+	margin-top:8px;
+}
+.sd-root .sd-sumwrap .sd-strip {
+	flex:1;
+	min-width:0;
+}
+.sd-root .sd-season-h.sd-lh {
+	min-height:30px;
+	box-sizing:content-box;
+	padding:14px 0 0;
+}
+.sd-root .sd-season-h.sd-lh b {
+	font-size:14.5px;
+	font-weight:600;
+}
+.sd-root .sd-season-h.sd-lh+.sd-eplist {
+	margin-top:6px;
+}
+.sd-root .sd-sumwrap.sd-solo {
+	margin-top:18px;
+}
+.sd-root .sd-ep-page>.sd-season-h.sd-lh:first-child {
+	padding-top:18px;
+}
+.sd-root .sd-stile {
+	flex:none;
+	width:112px;
+	display:flex;
+	flex-direction:column;
+	justify-content:center;
+	gap:1px;
+	font-size:12.5px;
+	line-height:1.35;
+	color:var(--sd-mu);
+}
+.sd-root .sd-stile b {
+	font-size:21px;
+	line-height:1.2;
+	font-weight:700;
+	color:var(--sd-tx);
+}
+.sd-root .sd-stile .sd-donelbl {
+	font-size:12.5px;
+	gap:4px;
+	margin-top:3px;
+}
+.sd-root .sd-stile span:last-child {
+	margin-top:3px;
+}
+.sd-root .sd-tool .sd-seg button {
+	padding:4px 9px;
+	font-size:13px;
+}
+.sd-root .sd-tool .sd-seg.sd-seasons {
+	flex:0 1 auto;
+	min-width:0;
+	overflow:hidden;
+}
+/* The numbers scroll on their own so "Season" stays put. */
+.sd-root .sd-season-rail {
+	position:relative;
+	display:flex;
+	flex:0 1 auto;
+	min-width:0;
+}
+.sd-root .sd-season-scroll {
+	position:relative;
+	display:flex;
+	gap:2px;
+	min-width:0;
+	overflow-x:auto;
+	scrollbar-width:none;
+	overscroll-behavior-x:contain;
+}
+.sd-root .sd-season-scroll::-webkit-scrollbar {
+	display:none;
+}
+/* A chevron over a fade to the bar's own colour, running out to the edge:
+   the numbers slip under it rather than being cut off square. */
+.sd-root .sd-tool .sd-seg .sd-snav {
+	position:absolute;
+	top:0;
+	bottom:0;
+	z-index:1;
+	display:flex;
+	align-items:center;
+	width:34px;
+	padding:0 2px;
+	border-radius:0;
+	background:transparent;
+	color:var(--sd-mu);
+	box-shadow:none;
+	animation:sd-snav-in 120ms ease-out;
+}
+.sd-root .sd-tool .sd-seg .sd-snav-back {
+	left:0;
+	justify-content:flex-start;
+	background:linear-gradient(to right, var(--sd-el) 45%, transparent);
+}
+.sd-root .sd-tool .sd-seg .sd-snav-more {
+	right:0;
+	justify-content:flex-end;
+	background:linear-gradient(to left, var(--sd-el) 45%, transparent);
+}
+.sd-root .sd-tool .sd-seg .sd-snav:hover {
+	color:var(--sd-tx);
+}
+@keyframes sd-snav-in {
+	from { opacity:0; }
+}
+@media (prefers-reduced-motion:reduce) {
+	.sd-root .sd-tool .sd-seg .sd-snav {
+		animation:none;
+	}
+}
+.sd-root .sd-seg-l {
+	flex:none;
+	align-self:center;
+	padding:0 8px 0 7px;
+	font-size:13px;
+	color:var(--sd-mu);
+}
+.sd-root .sd-tool .sd-seg .sd-sbtn {
+	position:relative;
+	flex:none;
+	min-width:32px;
+	justify-content:center;
+	padding:4px 6px 6px;
+}
+.sd-root .sd-sbtn i {
+	position:absolute;
+	left:6px;
+	bottom:3px;
+	height:2px;
+	border-radius:1px;
+	background:var(--sd-st);
+}
+.sd-root .sd-sbtn i.sd-full {
+	background:var(--sd-gr);
+}
+.sd-root .sd-sbtn.sd-on i {
+	background:#fff;
+}
+.sd-root .sd-pane>.sd-sec:first-child {
+	margin-top:18px;
+}
+.sd-root .sd-pane {
+	padding-bottom:24px;
+}
+.sd-root .sd-pane>.sd-ep-page {
+	padding-bottom:0;
+}
+@media (max-width:600px) {
+	.sd-root .sd-hero {
+		padding:18px 16px 4px;
+	}
+	.sd-root .sd-poster {
+		width:104px;
+	}
+	.sd-root .sd-head h2 {
+		font-size:23px;
+	}
+	.sd-root .sd-watchbar small {
+		display:none;
+	}
+	.sd-root .sd-body,
+	.sd-root .sd-ep-page,
+	.sd-root .sd-tabs,
+	.sd-root .sd-tool {
+		padding-left:16px;
+		padding-right:16px;
+	}
+	.sd-root .sd-sec,
+	.sd-root .sd-yours,
+	.sd-root .sd-cont {
+		margin-left:16px;
+		margin-right:16px;
+	}
+	.sd-root .sd-sumwrap {
+		flex-direction:column;
+		gap:10px;
+	}
+	.sd-root .sd-stile {
+		width:auto;
+		flex-direction:row;
+		flex-wrap:wrap;
+		align-items:baseline;
+		gap:4px 10px;
+	}
+	.sd-root .sd-stile span:last-child {
+		margin-top:0;
+	}
+	.sd-root .sd-tool {
+		flex-wrap:wrap;
+	}
+	.sd-root .sd-pgrid {
+		grid-template-columns:1fr;
+	}
+	.sd-root .sd-cont,
+	.sd-root .sd-cont.sd-slim {
+		grid-template-columns:1fr;
+	}
+	.sd-root .sd-cont.sd-slim .sd-acts {
+		justify-content:flex-start;
+	}
+	.sd-root .sd-shots {
+		grid-template-columns:repeat(2,1fr);
+	}
+	.sd-root .sd-tr {
+		grid-template-columns:22px 1fr auto 42px;
+	}
+	.sd-root .sd-tr .sd-hearts {
+		display:none;
+	}
+	.sd-root .sd-row {
+		grid-template-columns:1fr;
+		gap:6px;
+	}
+	.sd-root .sd-ep {
+		grid-template-columns:36px 1fr;
+	}
+	.sd-root .sd-ep .sd-still {
+		display:none;
+	}
 }
 
-/* Two columns, and only the hero is in them.
-   Floating the cover let the synopsis wrap around it, which turned a paragraph
-   into an L-shape that started mid-dialog and finished at the margin. The
-   synopsis now runs full width below, where it reads as a paragraph. */
-.scout-detail-hero {
-	display: flex;
-	align-items: flex-start;
-	gap: 18px;
-}
-/* The poster and anything that belongs on it. */
-.scout-detail-art {
+/* Real artwork where the design had gradients. */
+.sd-root .sd-poster {
 	position: relative;
-	flex: 0 0 118px;
 }
-.scout-detail-cover {
-	flex: 0 0 118px;
-	width: 118px;
-	aspect-ratio: 2 / 3;
-	border-radius: var(--scout-radius, 6px);
-	box-shadow:
-		0 2px 10px rgba(0, 0, 0, 0.3),
-		inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+.sd-root .sd-pimg {
+	display: block;
+	overflow: hidden;
+	padding: 0;
 }
-.scout-detail-head {
-	flex: 1 1 auto;
+.sd-root .sd-poster.sd-wide .sd-pimg,
+.sd-root .sd-poster.sd-sq .sd-pimg {
+	padding: 0;
+}
+.sd-root .sd-watchbar {
+	color: var(--sd-tx);
+}
+.sd-root .sd-watchbar span {
 	min-width: 0;
 }
-/* A real step down to the 12px meta line under it. At 21px against 12px the
-   two were close enough to read as one block of text. */
-.scout-detail-head h2 {
-	margin: 0 0 2px;
-	font-size: 25px;
-	font-weight: 650;
-	line-height: 1.15;
-	letter-spacing: -0.015em;
+.sd-root .sd-logo-pad {
+	object-fit: contain;
+	padding: 2px;
 }
-.scout-detail-subtitle {
-	margin: 0 0 6px;
-	color: var(--text-muted);
-	font-size: 13px;
-	font-style: italic;
-}
-/* A single line of quiet facts, dot-separated, instead of a stack of chips. */
-.scout-detail-meta {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 4px 9px;
-	margin: 5px 0 0;
-	font-size: 12px;
-	color: var(--text-muted);
-}
-/* The separator belongs to the line, not to the word after it — inheriting the
-   colour put an accent-coloured dot in front of "In your library". */
-.scout-detail-meta > span + span::before {
-	content: "·";
-	margin-inline-end: 9px;
-	color: var(--text-faint);
-	opacity: 0.85;
-}
-/* Not yet out. Worth a colour, since it is the one fact that dates. */
-/* The type, with its glyph. First in the line, so no separator dot precedes
-   it — the icon is what starts the row. */
-.scout-detail-kind {
-	display: inline-flex;
-	align-items: center;
-	gap: 5px;
-}
-.scout-detail-soon {
-	color: var(--text-accent);
-}
-/* Last on the facts line, and the quietest thing on it: what a thing *is*
-   ranks below what type it is and when it came out. */
-.scout-detail-genres {
-	color: var(--text-faint);
-}
-.scout-detail-actions {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 8px;
-	margin-top: 14px;
-}
-/* One height for the whole row. Left to themselves the icon buttons sized to
-   their glyph and the text buttons to their text, so no two matched. */
-.scout-detail-actions button,
-.scout-detail-actions .scout-button {
+.sd-root .sd-mono {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	gap: 6px;
-	height: var(--scout-control-h, 30px);
-	padding: 0 13px;
-	box-sizing: border-box;
-	/* Themes vary from square to fully round; pinning it keeps the row
-	   consistent with the inputs and cards next to it. */
-	border-radius: var(--scout-radius, 6px);
-	font-size: 13px;
-	line-height: 1;
+	background: var(--sd-el3);
+	color: var(--sd-tx);
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0.02em;
 }
-/* Square like the rest of the row. It was round to mark it out as a different
-   kind of action, but sitting in a row of rounded rectangles that read as one
-   odd one out rather than as a distinction — the heart already says what it
-   does. Nor does it get a nudge of its own away from Delete: the row's gap is
-   even everywhere else, so two extra pixels here read as a mistake rather than
-   as a grouping. */
-.scout-detail-actions .scout-fav,
-.scout-detail-actions .scout-more-actions {
-	width: var(--scout-control-h, 30px);
-	height: var(--scout-control-h, 30px);
+.sd-root .sd-tile .sd-mono {
+	font-size: 11px;
+}
+.sd-root button.sd-tile:hover {
+	background: var(--sd-el2);
+}
+.sd-root .sd-card {
+	display: block;
+	text-align: left;
+}
+.sd-root .sd-pimg2 {
+	display: block;
+	overflow: hidden;
 	padding: 0;
-	border-radius: var(--scout-radius, 6px);
 }
-/* The overflow wears the same plate as the heart beside it. One filled button
-   leading, two plain ones after it, is a hierarchy; a filled one, a plated one
-   and a floating glyph is three unrelated buttons. */
-.scout-detail-actions .scout-more-actions {
-	color: var(--text-muted);
+.sd-root .sd-pimg2 .sd-fillimg {
+	position: absolute;
+	inset: 0;
 }
-.scout-detail-actions .scout-more-actions:hover {
-	color: var(--text-normal);
+/* `.sd-card span` greys every span in a card, and the icon inside the tick is
+   one. Left alone the check comes out grey on green. */
+.sd-root .sd-card .sd-inlib span {
+	color: #fff;
 }
-.scout-detail-actions .scout-button {
-	background: var(--interactive-normal);
-	color: var(--text-normal);
-	box-shadow: var(--input-shadow);
-	text-decoration: none;
+.sd-root .sd-inlib {
+	z-index: 1;
 }
-.scout-detail-actions .scout-button:hover {
-	background: var(--interactive-hover);
+.sd-root .sd-av {
+	flex: none;
 }
-
-.scout-detail-description {
-	margin: 18px 0 0;
-	font-size: 14px;
-	line-height: 1.55;
+.sd-root .sd-av .sd-fillimg {
+	position: absolute;
+	inset: 0;
+	border-radius: 50%;
 }
-/* Cut to a number of lines, not a number of characters. A character count is a
-   guess about width: the same 420 characters is three lines in a wide dialog
-   and eight in a narrow one, and it always ended mid-word. The button above
-   appears only when this actually clipped something, which is measured. */
-.scout-detail-description p {
-	margin: 0;
-	display: -webkit-box;
-	-webkit-line-clamp: 5;
-	-webkit-box-orient: vertical;
+.sd-root .sd-lb {
+	z-index: 1;
+}
+.sd-root .sd-pthumb {
+	display: block;
+	flex: none;
+	width: 16px;
+	height: 24px;
+	overflow: hidden;
+	border-radius: 3px;
+}
+.sd-root .sd-vid,
+.sd-root .sd-shot {
+	position: relative;
+	display: flex;
 	overflow: hidden;
 }
-.scout-detail-description.is-open p {
+.sd-root .sd-vid .sd-fill,
+.sd-root .sd-shot .sd-fill {
+	position: absolute;
+	inset: 0;
 	display: block;
-	overflow: visible;
+	width: auto;
+	height: auto;
+	border-radius: 0;
 }
-/* Its own line under the text, and no plate under the words. Inline it sat
-   wherever the last sentence happened to stop and the paragraph reflowed around
-   it on each click; with the theme's button background it was a control the
-   same weight as Delete, for showing two more lines of synopsis. */
-.scout-detail-description .scout-link-button,
-.scout-detail-description .scout-link-button:hover {
-	display: inline-block;
-	margin-top: 6px;
-	padding: 0;
+.sd-root .sd-vid .sd-play {
+	z-index: 1;
+}
+.sd-root .sd-vid .sd-play span {
+	width: auto;
+	height: auto;
 	background: none;
-	border: none;
-	box-shadow: none;
 }
-.scout-detail-people {
-	margin: 14px 0 0;
-	font-size: 12px;
-	line-height: 1.6;
-	color: var(--text-muted);
+.sd-root .sd-vid .sd-play svg {
+	fill: currentColor;
 }
-.scout-detail-people strong {
-	margin-inline-end: 5px;
+.sd-root .sd-vid em {
+	z-index: 1;
+}
+
+/* The panel. Scout's own rating control, sized to sit in the design's row. */
+.sd-root .sd-ctl > span {
+	font-size: 13.5px;
+	color: var(--sd-mu);
+}
+.sd-root .sd-ctl b {
+	color: var(--sd-tx);
 	font-weight: 600;
-	color: var(--text-faint);
 }
+.sd-root .sd-ctl .scout-rating {
+	gap: 0;
+}
+.sd-root .sd-ctl .scout-rating-entry {
+	margin-left: 10px;
+	font-size: 13.5px;
+	color: var(--sd-mu);
+}
+/* Sized to its digits, so "9.9 /10" reads as one figure with a plain space. */
+.sd-root .sd-ctl .scout-rating-entry input[type="number"] {
+	width: auto;
+	min-width: 1ch;
+	field-sizing: content;
+	text-align: left;
+	font-size: 15px;
+	font-weight: 700;
+	color: var(--sd-tx);
+}
+.sd-root .sd-seg button .scout-icon {
+	color: var(--scout-tone, inherit);
+}
+.sd-root .sd-seg button.sd-on .scout-icon,
+.sd-root .sd-seg button.sd-on .scout-ring {
+	color: inherit;
+}
+.sd-root .sd-seg button.is-foreign {
+	font-style: italic;
+}
+.sd-root button.sd-md {
+	display: block;
+	text-align: left;
+}
+.sd-root .sd-md > :first-child {
+	margin-top: 0;
+}
+.sd-root .sd-md > :last-child {
+	margin-bottom: 0;
+}
+.sd-root .sd-md a {
+	color: var(--link-color);
+}
+.sd-root .sd-note {
+	text-align: left;
+}
+.sd-root .sd-ctl .scout-progress-bar {
+	flex: 1;
+}
+
+body.is-phone .scout-detail-modal {
+	width: 100%;
+	height: 100%;
+	border-radius: 0;
+}
+
+/* The fold-out series shelf keeps its own look, in the tab's margins. */
+.sd-root .sd-sec .scout-series {
+	margin: 0;
+}
+
+/* The reset above aligns button text left, which suits everything but these. */
+.sd-root .sd-heat td button,
+.sd-root .sd-bar {
+	text-align: center;
+}
+
+/* A short hero would otherwise cut the backdrop off before its fade finishes. */
+.sd-root .sd-bd {
+	height: min(300px, 100%);
+	/* The blurred stand-in spreads past its box, under the fade that hides it. */
+	overflow: hidden;
+}
+/* Unrated stars. */
+.sd-root .sd-ctl .scout-rating-glyph svg.is-track path {
+	fill: var(--sd-edge);
+}
+.sd-root .sd-ctl .scout-rating-entry input[type="number"]::placeholder {
+	color: var(--sd-tx);
+	opacity: 1;
+}
+
+/* A film in no series renders nothing into its wrapper. */
+.sd-root .sd-sec:empty {
+	display: none;
+}
+
+/* `.sd-gapli > span` stretches the sentence, and the icon is a span too. */
+.sd-root .sd-gapli > .scout-icon {
+	flex: none;
+	min-width: 0;
+}
+.sd-root .sd-ctl .scout-rating-entry {
+	gap: 4px;
+}
+.sd-root .sd-ctl .scout-rating-entry input[type="number"] {
+	padding: 0;
+}
+.sd-root .sd-ctl .scout-rating-entry .scout-rating-scale {
+	color: var(--sd-mu);
+	font-size: 13.5px;
+}
+
+/* ============================================================ detail dialog */
+
 .scout-detail-hint {
 	margin-top: 16px;
 	padding: 12px;
@@ -761,37 +2880,6 @@
 
 /* ======================================================= seasons & series */
 
-/* The way through to the guide. A plate rather than a heading, because unlike
-   every other heading in the dialog this one goes somewhere — and the chevron
-   at the end is the only thing that says so before you click it. */
-.scout-section-link {
-	display: flex;
-	align-items: center;
-	gap: 9px;
-	width: 100%;
-	/* Obsidian gives every button one height. Anything of ours that is a button
-	   but not button-shaped has to say so, or its padding is ignored and its
-	   contents are cropped to thirty pixels. */
-	height: auto;
-	margin-top: 18px;
-	padding: 10px 12px;
-	border-radius: var(--scout-radius, 6px);
-	background: var(--background-secondary);
-	box-shadow: none;
-	color: var(--text-normal);
-	text-align: start;
-	cursor: pointer;
-	transition: background 90ms var(--scout-ease);
-}
-.scout-section-link:hover {
-	background: var(--background-modifier-hover);
-}
-.scout-section-link > .scout-icon:first-child {
-	color: var(--text-muted);
-}
-.scout-section-link > .scout-icon:last-child {
-	color: var(--text-faint);
-}
 .scout-section-title {
 	font-size: 13px;
 	font-weight: 600;
@@ -803,348 +2891,8 @@ h3.scout-section-title {
 	margin: 20px 0 10px;
 	color: var(--text-muted);
 }
-/* Where you are, when the guide is shut — the one thing worth knowing without
-   opening it. */
-.scout-section-note {
-	margin-inline-start: auto;
-	font-size: 11px;
-	color: var(--text-faint);
-	font-variant-numeric: tabular-nums;
-	white-space: nowrap;
-}
 
 /* ---------------------------------------------------- the guide, as a page */
-
-/* Its own view of the dialog rather than a fold inside one. Everything below
-   is free to be full width and full height, which is the whole point: a season
-   of twenty-four does not belong in a 340px window inside a synopsis. */
-.scout-episodes-page {
-	display: flex;
-	flex-direction: column;
-	gap: 10px;
-	min-height: 60vh;
-}
-/* Back on a line of its own, at the start of it, and nothing else on that line.
-   The dialog's close button lives in the top right corner of the same strip:
-   anything put over there — the season and episode counts, as it was — ends up
-   underneath it. */
-.scout-episodes-bar {
-	display: flex;
-	align-items: center;
-}
-.scout-episodes-head {
-	display: flex;
-	flex-direction: column;
-	gap: 3px;
-	padding-bottom: 12px;
-	border-bottom: 1px solid var(--background-modifier-border);
-}
-.scout-episodes-head h2 {
-	margin: 0;
-	min-width: 0;
-	font-size: 19px;
-	font-weight: 600;
-	line-height: 1.25;
-}
-.scout-back {
-	display: inline-flex;
-	align-items: center;
-	gap: 2px;
-	flex: 0 0 auto;
-	height: var(--scout-control-h, 28px);
-	padding: 0 10px 0 4px;
-	border-radius: var(--scout-radius, 6px);
-	background: var(--background-secondary);
-	box-shadow: none;
-	color: var(--text-muted);
-	font-size: 12px;
-}
-.scout-back:hover {
-	background: var(--background-modifier-hover);
-	color: var(--text-normal);
-}
-/* How long the run is and where you are in it, on one line under the title.
-   The list says the second part in ticks; this says it once in words, at the
-   top, which is the thing you opened the page to find out. */
-.scout-episodes-where {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 4px 8px;
-	margin: 0;
-	font-size: 12px;
-	color: var(--text-muted);
-}
-/* The separator belongs to the line rather than to either fact, so a show with
-   no marker yet does not trail one. */
-.scout-episodes-where > span + span::before {
-	content: "·";
-	margin-inline-end: 8px;
-	color: var(--text-faint);
-}
-.scout-episodes-where strong {
-	color: var(--text-normal);
-	font-variant-numeric: tabular-nums;
-}
-
-/* One segmented row, the same shape as the statuses in the panel below. */
-.scout-season-pills {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 4px;
-	margin-bottom: 8px;
-}
-.scout-season-pills button {
-	display: inline-flex;
-	align-items: center;
-	gap: 5px;
-	height: var(--scout-segment-h, 26px);
-	padding: 0 10px;
-	border-radius: var(--scout-radius, 6px);
-	background: var(--background-secondary);
-	box-shadow: none;
-	color: var(--text-muted);
-	font-size: 12px;
-	line-height: 1;
-	white-space: nowrap;
-}
-.scout-season-pills button:hover {
-	background: var(--background-modifier-hover);
-	color: var(--text-normal);
-}
-.scout-season-pills button.is-on {
-	background: var(--interactive-accent);
-	color: var(--text-on-accent);
-}
-.scout-season-pills button.is-on .scout-count {
-	background: rgba(255, 255, 255, 0.2);
-	color: inherit;
-}
-.scout-season-select {
-	margin-bottom: 8px;
-	height: var(--scout-control-h, 28px);
-	border-radius: var(--scout-radius, 6px);
-	font-size: 12px;
-}
-
-/* Uncapped: the page scrolls, not a box inside it. Nothing below the list
-   competes for the room any more, so a long season simply makes a long page. */
-.scout-episode-list {
-	margin: 0;
-	padding: 0;
-	list-style: none;
-}
-/* Every episode open, always: still, number, facts, synopsis. This is the shape
-   a streaming guide has, and it has it because the question being asked while
-   scrolling one is "which one was this", which a closed drawer cannot answer
-   until after you have opened it — twenty times, to find one episode. */
-.scout-episode {
-	display: flex;
-	align-items: flex-start;
-	gap: 12px;
-	padding: 12px 6px;
-	border-radius: var(--scout-radius, 6px);
-	border-top: 1px solid var(--background-modifier-border);
-}
-.scout-episode:first-child {
-	border-top: none;
-}
-.scout-episode:hover {
-	background: var(--background-modifier-hover);
-}
-/* The one you have not seen yet is the only row on the list with anything to
-   say, so it is the only one lit. */
-.scout-episode.is-next {
-	background: var(--background-secondary);
-}
-.scout-episode-no {
-	flex: 0 0 auto;
-	min-width: 16px;
-	padding-top: 1px;
-	color: var(--text-faint);
-	font-size: 15px;
-	font-variant-numeric: tabular-nums;
-	text-align: end;
-}
-/* The still, with the tick over it. Together rather than at opposite ends of
-   the row: marking an episode watched is the one thing this list does, and the
-   thumbnail is where the pointer already is.
-   It gives up width before the words do, and gives up its line last of all —
-   sized against the row rather than the window, because a dialog is narrow
-   inside a wide window all the time and no media query can see that. */
-.scout-episode-art {
-	position: relative;
-	flex: 0 1 150px;
-	min-width: 68px;
-}
-.scout-episode-still {
-	display: block;
-	width: 100%;
-	aspect-ratio: 16 / 9;
-	object-fit: cover;
-	border-radius: var(--scout-radius, 6px);
-	background: var(--background-secondary);
-}
-.scout-episode-still.is-blank {
-	border: 1px solid var(--background-modifier-border);
-}
-.scout-episode.is-watched .scout-episode-still {
-	opacity: 0.55;
-}
-/* Over the corner of the still, on its own dark plate — a still is any colour
-   at all, and a glyph laid straight onto one disappears into about half of
-   them. */
-/* Two marks, side by side in the corner: the tick, which is about this one
-   episode, and the fill, which is about everything behind it. They are two
-   gestures and so they are two buttons — one control doing both meant a show
-   watched out of order could not be recorded at all. */
-.scout-episode-marks {
-	position: absolute;
-	z-index: 1;
-	inset-block-end: 5px;
-	inset-inline-start: 5px;
-	display: flex;
-	align-items: center;
-	gap: 4px;
-}
-.scout-episode-tick,
-.scout-episode-fill {
-	position: static;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 24px;
-	height: 24px;
-	padding: 0;
-	border-radius: 50%;
-	background: rgba(0, 0, 0, 0.62);
-	box-shadow: none;
-	color: #fff;
-	opacity: 0.85;
-}
-.scout-episode-tick:hover,
-.scout-episode-fill:hover {
-	background: rgba(0, 0, 0, 0.8);
-	opacity: 1;
-}
-/* The tick is drawn as an empty box until it is ticked, because a filled tick
-   on an episode nobody has watched is the control lying about the state it is
-   asking you to set. */
-.scout-episode-tick {
-	box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.5);
-	color: rgba(255, 255, 255, 0.65);
-}
-.scout-episode-tick:hover {
-	box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.8);
-	color: #fff;
-}
-.scout-episode-tick.is-on,
-.scout-episode-tick.is-on:hover {
-	background: var(--interactive-accent);
-	box-shadow: none;
-	color: var(--text-on-accent);
-	opacity: 1;
-}
-.scout-episode-text {
-	display: flex;
-	flex-direction: column;
-	gap: 4px;
-	/* A real basis, so a narrowing dialog takes width off the still and the
-	   words together rather than crushing the words while the still keeps every
-	   pixel of its 150. Both give until the still hits its floor. */
-	flex: 1 1 170px;
-	min-width: 0;
-}
-/* Title at the start, facts at the end of the same line — they wrap onto two
-   only when the dialog genuinely has no room for both. */
-.scout-episode-line {
-	display: flex;
-	align-items: baseline;
-	justify-content: space-between;
-	gap: 6px 12px;
-	flex-wrap: wrap;
-	min-width: 0;
-}
-.scout-episode-title {
-	display: flex;
-	align-items: center;
-	gap: 7px;
-	min-width: 0;
-	font-size: 14px;
-	font-weight: 500;
-}
-/* Everything before the marker is behind you, so it recedes. */
-.scout-episode.is-watched .scout-episode-title {
-	color: var(--text-muted);
-}
-.scout-episode-flag {
-	flex: 0 0 auto;
-	padding: 1px 6px;
-	border-radius: var(--scout-pill, 999px);
-	background: var(--interactive-accent);
-	color: var(--text-on-accent);
-	font-size: 10px;
-	font-weight: 500;
-	line-height: 1.5;
-}
-/* Shrinkable, and allowed to wrap as the last resort. Pinned at its full width
-   it was the one thing on the row that could not give, so a narrow dialog put
-   the air date out past the edge of the page rather than onto a second line. */
-.scout-episode-meta {
-	display: flex;
-	align-items: center;
-	flex-wrap: wrap;
-	gap: 2px 6px;
-	flex: 0 1 auto;
-	font-size: 11px;
-	color: var(--text-faint);
-}
-/* Three lines. A TMDB synopsis is two or three; the handful that run to six
-   would each be taller than the still beside them, and the list would stop
-   being a list. */
-.scout-episode-overview {
-	margin: 0;
-	font-size: 12px;
-	line-height: 1.5;
-	color: var(--text-muted);
-	display: -webkit-box;
-	-webkit-line-clamp: 3;
-	-webkit-box-orient: vertical;
-	overflow: hidden;
-}
-.scout-episode-blank {
-	color: var(--text-faint);
-	font-style: italic;
-}
-/* Your score and your note, under the source's words rather than at the far end
-   of the row: they are the two things on this row that are yours. */
-.scout-episode-yours {
-	display: flex;
-	align-items: center;
-	flex-wrap: wrap;
-	gap: 4px 10px;
-	margin-top: 2px;
-	min-height: 22px;
-}
-/* Only while the row is under the pointer, or once you have actually rated the
-   episode. A column of empty star rows down a season of twenty is a form. */
-.scout-episode-yours .scout-link-button {
-	opacity: 0;
-	transition: opacity 90ms var(--scout-ease);
-}
-.scout-episode:hover .scout-episode-yours .scout-link-button,
-.scout-episode-yours .scout-link-button:focus-visible {
-	opacity: 1;
-}
-.scout-episode-note {
-	width: 100%;
-	box-sizing: border-box;
-	min-height: 44px;
-	margin-top: 4px;
-	resize: vertical;
-	border-radius: var(--scout-radius, 6px);
-	font-size: 12px;
-	line-height: 1.5;
-}
 
 /* The rest of the series, wrapped rather than scrolled sideways.
    A horizontal strip sounded right and was not: the dialog is about 600px, a
@@ -1207,169 +2955,6 @@ h3.scout-section-title {
 }
 
 /* ============================================================ manage panel */
-
-/* No plate. A panel inside a dialog is a card inside a card, and the grey box
-   was doing nothing a rule and some space could not do better. The labels
-   recede into a quiet column so the controls are what you actually see. */
-/* One grid for the whole panel rather than a grid per row. The label column is
-   then as wide as the longest label and no wider — a fixed 92px column left
-   every short label marooned half an inch from the control it names, and the
-   two could not be read as one thing. Rows are `contents`, which is what lets
-   separate rows share a column and stay aligned with each other. */
-.scout-manage {
-	display: grid;
-	grid-template-columns: auto minmax(0, 1fr);
-	align-items: center;
-	column-gap: 13px;
-	row-gap: 12px;
-	margin-top: 22px;
-	padding-top: 18px;
-	border-top: 1px solid var(--background-modifier-border);
-}
-.scout-manage-row {
-	display: contents;
-}
-/* Sentence case, same reasoning as the group headings: the column position and
-   the grey already say "this is a label". */
-.scout-manage-label {
-	font-size: 12px;
-	font-weight: 500;
-	color: var(--text-faint);
-}
-/* One height for every control in the panel — the date fields, the selects,
-   the stepper, and the status buttons all sat at slightly different sizes. */
-.scout-manage-control input,
-.scout-manage-control select {
-	height: var(--scout-control-h, 28px);
-	box-sizing: border-box;
-}
-.scout-manage-control .scout-stepper,
-.scout-manage .scout-status-group {
-	min-height: var(--scout-control-h, 28px);
-	box-sizing: border-box;
-}
-.scout-manage-control input[type="checkbox"] {
-	height: auto;
-}
-/* Spread across the column rather than bunched at its start. A row holding two
-   or three separate controls — the dates, the stepper and its bar — reads as
-   one row of the panel when it spans the same width the status group does, and
-   as an abandoned half-row when it stops in the middle. Rows with a single
-   control are unaffected, which is why the rating readout stays where it is. */
-.scout-manage-control {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 12px;
-	flex: 1;
-	min-width: 0;
-	flex-wrap: wrap;
-}
-
-/* Square, and the same square as everything else: equal width and height so it
-   cannot come out as a lozenge, and the shared radius so it sits in a row of
-   buttons without announcing itself. */
-.scout-fav {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: var(--scout-control-h, 28px);
-	height: var(--scout-control-h, 28px);
-	padding: 0;
-	flex: 0 0 auto;
-	border-radius: var(--scout-radius, 6px);
-	color: var(--text-muted);
-}
-/* Not the accent: the stars beside it are already accent-coloured, and two
-   different things in one colour read as one thing. */
-.scout-fav.is-on {
-	color: var(--color-pink, var(--color-red, #d9536f));
-}
-.scout-fav:hover {
-	background: var(--background-modifier-hover);
-}
-.scout-fav.is-on svg {
-	fill: currentColor;
-}
-
-/* A single segmented control rather than five loose pills of different widths,
-   which is what made the row look ragged.
-
-   Sized to the column, with the segments sharing it out between them. It used
-   to size to its own content, which left the panel ending in three different
-   places down four rows — the statuses stopping an inch short of the dates
-   below them, and the progress bar floating in the gap. Every row now runs the
-   full width of the column and the panel reads as one block.
-
-   It still wraps when the dialog is too narrow for one line, and a wrapped row
-   is neat rather than ragged, since the segments grow to fill whatever line
-   they land on. Truncating them instead is what hid half of every word.
-
-   None of this can put the label back above the control: the row is a grid, so
-   the label holds its own column however tall this gets. */
-.scout-status-group {
-	display: flex;
-	flex-wrap: wrap;
-	justify-self: stretch;
-	max-width: 100%;
-	gap: 2px;
-	padding: 2px;
-	border-radius: var(--scout-radius, 6px);
-	background: var(--background-modifier-border);
-}
-/* Every segment the same height as every other button in the panel, set once
-   here rather than emerging from whatever padding and glyph each one holds. */
-.scout-status {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	gap: 5px;
-	height: var(--scout-segment-h, 26px);
-	padding: 0 10px 0 8px;
-	box-sizing: border-box;
-	/* Grows into a wrapped line, never shrinks below its own word. */
-	min-width: 0;
-	flex: 1 0 auto;
-	font-size: 12px;
-	line-height: 1;
-	border-radius: calc(var(--scout-radius, 6px) - 2px);
-	background: transparent;
-	box-shadow: none;
-	color: var(--text-muted);
-	cursor: pointer;
-	white-space: nowrap;
-}
-/* Unselected, only the glyph is tinted; selecting one floods the whole
-   button with its tone, so which shelf you are on is unmissable. */
-.scout-status .scout-icon,
-.scout-status .scout-ring {
-	color: var(--scout-tone, var(--text-faint));
-}
-.scout-status:hover {
-	background: var(--background-modifier-hover);
-	color: var(--text-normal);
-}
-.scout-status.is-on {
-	background: var(--scout-tone, var(--interactive-accent));
-	color: var(--text-on-accent);
-}
-.scout-status.is-on .scout-icon,
-.scout-status.is-on .scout-ring {
-	color: inherit;
-}
-.scout-status.scout-t-planned.is-on {
-	background: var(--interactive-accent);
-}
-.scout-status.is-foreign {
-	font-style: italic;
-}
-/* The word gives way before the glyph does, so a squeezed row still says which
-   shelf each segment is. */
-.scout-status-label {
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
 
 /* The many-statuses form: the same tinted glyph, then the list. */
 .scout-status-picker {
@@ -1472,30 +3057,6 @@ h3.scout-section-title {
 	background: var(--interactive-accent);
 }
 
-.scout-date-row {
-	gap: 14px;
-}
-/* Half the row each, and the field takes whatever the word beside it leaves.
-   Sized to themselves the two boxes ended wherever the browser's date widget
-   happened to want, which was never where the row above them ended. */
-.scout-date-row label {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	flex: 1 1 0;
-	min-width: 0;
-	font-size: 12px;
-	color: var(--text-muted);
-}
-.scout-date-row label > span {
-	flex: 0 0 auto;
-}
-.scout-date-row input {
-	flex: 1 1 auto;
-	min-width: 0;
-	font-size: 12px;
-}
-
 /* Going round again, among the other things you can do to the item. It sat on
    the end of the dates row before, where it read as a third date field and
    pushed the two real ones onto a line of their own at any sensible width. */
@@ -1517,61 +3078,6 @@ h3.scout-section-title {
 	font-size: 11px;
 	line-height: 1.35;
 	white-space: nowrap;
-}
-/* Quieter than the two buttons beside it: an occasional action, not the one
-   the dialog is for. */
-.scout-replay-again {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	height: var(--scout-control-h, 28px);
-	padding: 0 11px;
-	border-radius: var(--scout-radius, 6px);
-	background: var(--background-secondary);
-	box-shadow: none;
-	color: var(--text-muted);
-	font-size: 13px;
-	line-height: 1;
-	white-space: nowrap;
-}
-.scout-replay-again:hover {
-	background: var(--background-modifier-hover);
-	color: var(--text-normal);
-}
-
-/* Across both columns, and with room above it: a text area is a section of the
-   panel rather than one more field on a line. Its own heading keeps the space
-   the rows above gave up, which is what the user asked for — tighter fields,
-   not a tighter panel. */
-.scout-thoughts {
-	grid-column: 1 / -1;
-	margin-top: 8px;
-}
-.scout-thoughts-head {
-	display: flex;
-	align-items: baseline;
-	justify-content: space-between;
-	margin-bottom: 4px;
-}
-.scout-thoughts-state {
-	font-size: 11px;
-	color: var(--text-faint);
-}
-.scout-thoughts textarea {
-	width: 100%;
-	/* Or its padding lands outside the dialog and the panel scrolls sideways. */
-	box-sizing: border-box;
-	min-height: 104px;
-	resize: vertical;
-	border-radius: var(--scout-radius, 6px);
-	font-size: 13px;
-	line-height: 1.55;
-}
-.scout-date-row input,
-.scout-manage-control input[type="text"],
-.scout-manage-control input[type="number"],
-.scout-manage-control select {
-	border-radius: var(--scout-radius, 6px);
 }
 
 /* =============================================================== library */
@@ -1624,13 +3130,39 @@ h3.scout-section-title {
 	width: 100%;
 	padding-inline-start: 32px;
 }
-.scout-clear {
+/* A small round chip inside the field's end, not a theme button squeezed in. */
+.scout-search-wrap .scout-clear {
 	position: absolute;
-	inset-inline-end: 4px;
-	padding: 2px 4px;
-	background: none;
+	inset-inline-end: 6px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+	padding: 0;
+	border: 0;
+	border-radius: 50%;
+	background: var(--background-modifier-hover);
 	box-shadow: none;
-	color: var(--text-faint);
+	color: var(--text-muted);
+	cursor: pointer;
+	--icon-size: 12px;
+	--icon-stroke: 2.5px;
+}
+.scout-search-wrap .scout-clear:hover {
+	background: var(--background-modifier-active-hover, var(--background-modifier-border));
+	color: var(--text-normal);
+}
+.scout-search-wrap .scout-clear:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 1px;
+}
+.scout-search-wrap .scout-clear .scout-icon {
+	display: flex;
+}
+/* Room for the chip, so a long filter does not run under it. */
+.scout-search-wrap input.scout-library-search:not(:placeholder-shown) {
+	padding-inline-end: 30px;
 }
 /* Add and the layout toggle are not filters, so they sit apart from them at the
    far end of the strip rather than in the queue of dropdowns. */
@@ -2180,10 +3712,22 @@ h3.scout-section-title {
 	color: var(--text-faint);
 	font-variant-numeric: tabular-nums;
 }
+/* The compass is an outline: filling it, as the star once was, makes a disc. */
 .scout-source-rating .scout-icon svg {
-	fill: currentColor;
-	stroke: none;
+	fill: none;
+	stroke: currentColor;
 	opacity: 0.8;
+}
+
+/* Hype: the score a film not out yet is likely to settle at. The same faint
+   number as a Scout score, so it never outshouts one, with a warm flame in
+   place of the compass so it is never read as a verdict. */
+.scout-hype .scout-icon svg {
+	color: var(--color-orange);
+}
+.sd-hype .sd-score-caption .scout-icon,
+.sd-hype .scout-icon {
+	color: var(--color-orange);
 }
 
 /* Something that has not come out yet. Accent-coloured because it is the one
@@ -2199,6 +3743,18 @@ h3.scout-section-title {
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
+}
+/* A countdown and its hype share a line rather than wrapping onto two: the
+   hype keeps its width and the countdown is the one that gives way. */
+.scout-entry-soon {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+	max-width: 100%;
+}
+.scout-entry-soon .scout-hype {
+	flex-shrink: 0;
 }
 /* "Release date TBA" is not news and never changes, so it keeps the shape of a
    countdown without the colour that says one is running. */
@@ -2454,30 +4010,7 @@ h3.scout-section-title {
 /* ============================================================== responsive */
 
 @media (max-width: 620px) {
-	/* Too narrow for two columns, so the hero stacks. */
-	.scout-detail-hero {
-		flex-direction: column;
-		align-items: center;
-		text-align: center;
-	}
-	.scout-detail-cover {
-		flex: 0 0 auto;
-	}
-	.scout-detail-meta,
-	.scout-detail-actions {
-		justify-content: center;
-	}
-	/* And the labels go back above their controls, which at this width is the
-	   only place left for them. */
-	.scout-manage {
-		grid-template-columns: minmax(0, 1fr);
-		row-gap: 4px;
-	}
-	/* A row of two stacked cells needs the gap between rows, not within them. */
-	.scout-manage-control,
-	.scout-status-group {
-		margin-bottom: 6px;
-	}
+
 	.scout-field-list {
 		column-count: 1;
 	}
@@ -2718,40 +4251,6 @@ body.is-phone .scout-home-section-head {
    that the row itself explains. */
 body.is-phone .scout-home-note {
 	display: none;
-}
-
-/* The dialog. Obsidian gives it the screen; these are the bits inside it that
-   still assume a desktop's width. */
-body.is-phone .scout-detail-cover {
-	width: 96px;
-	flex-basis: 96px;
-}
-body.is-phone .scout-detail-art {
-	flex-basis: 96px;
-}
-body.is-phone .scout-detail-head h2 {
-	font-size: 21px;
-}
-body.is-phone .scout-detail-actions {
-	gap: 6px;
-}
-body.is-phone .scout-detail-actions .mod-cta {
-	flex: 1 1 auto;
-}
-/* A still, a number, a title, two facts and a synopsis is a lot of row for a
-   phone. The still stays — it is the thing you recognise an episode by — and
-   the facts drop under the title instead of beside it. */
-body.is-phone .scout-episode {
-	gap: 10px;
-	padding: 10px 2px;
-}
-body.is-phone .scout-episode-line {
-	flex-direction: column;
-	align-items: flex-start;
-	gap: 2px;
-}
-body.is-phone .scout-episode-overview {
-	-webkit-line-clamp: 3;
 }
 
 /* The suggestion buttons never appear on hover, because there is no hover:
@@ -3278,7 +4777,6 @@ body.is-phone .scout-condition input {
 	line-height: 1.6;
 }
 
-
 /* ==================================================== views & collections */
 
 /* The dialog where both are made. Two features, one editor, because they are
@@ -3692,63 +5190,6 @@ body.is-phone .scout-combo-list li {
 
 /* ------------------------------------------------- membership, in the panel */
 
-.scout-collection-picks {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 6px;
-}
-.scout-collection-pick {
-	display: inline-flex;
-	align-items: center;
-	gap: 5px;
-	height: 26px;
-	padding: 0 10px;
-	border-radius: var(--scout-pill, 999px);
-	background: var(--background-secondary);
-	box-shadow: none;
-	color: var(--text-muted);
-	font-size: 12px;
-	line-height: 1;
-}
-.scout-collection-pick:hover {
-	background: var(--background-modifier-hover);
-	color: var(--text-normal);
-}
-.scout-collection-pick.is-on {
-	background: var(--interactive-accent);
-	color: var(--text-on-accent);
-}
-/* The way out of the list of shelves that exist. Outlined rather than filled,
-   because it is not one of them. */
-.scout-collection-add {
-	display: inline-flex;
-	align-items: center;
-	gap: 5px;
-	height: 26px;
-	padding: 0 10px;
-	border-radius: var(--scout-pill, 999px);
-	background: transparent;
-	box-shadow: inset 0 0 0 1px var(--background-modifier-border);
-	color: var(--text-muted);
-	font-size: 12px;
-}
-.scout-collection-add:hover {
-	background: var(--background-modifier-hover);
-	color: var(--text-normal);
-}
-
-/* A smart collection this item does not qualify for. Shown rather than hidden:
-   knowing the shelf exists and that this is not for it is worth a greyed
-   chip, and hiding it makes the row's contents depend on the item. */
-.scout-collection-pick:disabled {
-	opacity: 0.45;
-	cursor: not-allowed;
-}
-.scout-collection-pick:disabled:hover {
-	background: var(--background-secondary);
-	color: var(--text-muted);
-}
-
 /* One row of the add-to-collection picker: title over the facts that tell two
    films of the same name apart. */
 .scout-pick-row {
@@ -4087,22 +5528,60 @@ body.is-phone .scout-combo-list li {
 	overflow-y: auto;
 }
 .scout-stats-page {
+	--scout-radius: 6px;
+	--scout-card-radius: 14px;
+	--scout-kind-movie: var(--color-blue, #4a8fe0);
+	--scout-kind-tv: var(--color-purple, #9b6ee0);
+	--scout-kind-anime: var(--color-pink, #d9619a);
+	--scout-kind-book: var(--color-orange, #d98a3a);
+	--scout-kind-manga: var(--color-red, #c9564f);
+	--scout-kind-game: var(--color-green, #3aa675);
+	--scout-kind-album: var(--color-cyan, #3aa6b9);
+	--scout-kind-link: var(--color-yellow, #c9a93a);
+	--scout-up: var(--color-green, #3aa675);
+	--scout-down: var(--color-red, #c9564f);
 	display: flex;
 	flex-direction: column;
-	gap: 16px;
+	gap: 18px;
 	max-width: 1180px;
 	margin: 0 auto;
-	padding: 22px 22px 48px;
+	padding: 28px 28px 56px;
+	font-variant-numeric: tabular-nums;
 }
+
+/* Obsidian dresses every button as a raised grey pill. The page's buttons are
+   rows, bars and chips instead, so they start from nothing. */
+.scout-stats-page button.scout-plain:not(.clickable-icon) {
+	height: auto;
+	padding: 0;
+	border: none;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+	color: inherit;
+	font: inherit;
+	text-align: start;
+	cursor: pointer;
+}
+
+/* Head: the title on the left, the filters on the right. */
 .scout-stats-head {
 	display: flex;
 	flex-wrap: wrap;
-	align-items: center;
-	gap: 10px 18px;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: 12px 18px;
 }
-.scout-stats-head h2 {
+.scout-stats-title h2 {
 	margin: 0;
-	flex: 1 1 auto;
+	font-size: 1.75em;
+	font-weight: 700;
+	letter-spacing: -0.02em;
+	line-height: 1.15;
+}
+.scout-stats-title span {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
 }
 .scout-stats-filters {
 	display: flex;
@@ -4110,203 +5589,587 @@ body.is-phone .scout-combo-list li {
 	align-items: center;
 	gap: 8px;
 }
-.scout-stats-toggle {
+.scout-stats-filters select {
+	height: 30px;
+}
+.scout-stats-page .scout-segment {
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+}
+.scout-stats-page .scout-segment button.scout-plain:not(.clickable-icon) {
+	height: 24px;
+	padding: 0 10px;
+	border-radius: calc(var(--scout-radius) - 2px);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	font-weight: 500;
+	white-space: nowrap;
+}
+.scout-stats-page .scout-segment button.scout-plain:not(.clickable-icon):hover {
+	color: var(--text-normal);
+}
+.scout-stats-page .scout-segment button.scout-plain.is-on:not(.clickable-icon) {
+	background: var(--background-primary);
+	color: var(--text-normal);
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+.scout-stats-page button.scout-stats-icon:not(.clickable-icon) {
 	display: inline-flex;
 	align-items: center;
-	gap: 6px;
-	font-size: var(--font-ui-small);
+	justify-content: center;
+	width: 30px;
+	height: 30px;
+	border-radius: var(--scout-radius);
+	border: 1px solid var(--background-modifier-border);
 	color: var(--text-muted);
 }
-.scout-stats-pair {
+.scout-stats-page button.scout-stats-icon:not(.clickable-icon):hover,
+.scout-stats-page button.scout-stats-icon.is-on:not(.clickable-icon) {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+/* Cards */
+.scout-stats-grid {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
-	gap: 16px;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+	gap: 18px;
 }
-.scout-stats-card {
+.scout-stats-card,
+.scout-stats-hero {
 	min-width: 0;
-	padding: 14px 16px;
+	padding: 18px 20px;
 	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--radius-m);
-	background: var(--background-primary-alt);
+	border-radius: var(--scout-card-radius);
+	background: var(--background-secondary);
 }
-.scout-stats-card h3 {
+.scout-stats-card.is-wide {
+	grid-column: 1 / -1;
+}
+.scout-stats-card-head {
 	display: flex;
-	align-items: center;
-	gap: 6px;
-	margin: 0 0 10px;
-	font-size: var(--font-ui-medium);
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 6px 12px;
+	flex-wrap: wrap;
+	margin-bottom: 14px;
 }
-.scout-stats-card p {
-	margin: 0 0 10px;
+.scout-stats-card-head h3 {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	margin: 0;
+	font-size: var(--font-ui-medium);
+	font-weight: 600;
+}
+.scout-stats-card-head h3 .svg-icon {
+	color: var(--text-faint);
 }
 .scout-stats-note {
 	font-weight: normal;
 	color: var(--text-muted);
 	font-size: var(--font-ui-smaller);
 }
-.scout-stats-edit {
-	margin-inline-start: auto;
+.scout-stats-page button.scout-stats-edit:not(.clickable-icon) {
+	color: var(--text-accent);
 	font-size: var(--font-ui-smaller);
-}
-.scout-stats-goal-prompt {
-	display: flex;
-	justify-content: flex-end;
+	font-weight: 500;
 }
 
-/* Bars */
-.scout-bars {
-	display: flex;
-	align-items: stretch;
-	gap: 4px;
-	height: 140px;
+/* Headline: the big number and its split, beside the figures. */
+.scout-stats-hero {
+	display: grid;
+	grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+	gap: 24px 32px;
+	padding: 24px;
+	background:
+		radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--interactive-accent) 14%, transparent), transparent 60%),
+		var(--background-secondary);
 }
-.scout-bar {
-	flex: 1 1 0;
-	min-width: 0;
+.scout-stats-total {
 	display: flex;
 	flex-direction: column;
-	justify-content: flex-end;
-	align-items: center;
-	gap: 2px;
-	padding: 0;
-	background: none;
-	border: none;
-	box-shadow: none;
-	height: 100%;
+	gap: 14px;
+	min-width: 0;
 }
-.scout-bar.is-clickable {
-	cursor: pointer;
+.scout-stats-big {
+	display: flex;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: 4px 12px;
 }
-.scout-bar.is-clickable:hover .scout-bar-fill,
-.scout-bar.is-clickable:focus-visible .scout-bar-fill {
-	opacity: 0.8;
+.scout-stats-big strong {
+	font-size: 64px;
+	font-weight: 800;
+	line-height: 0.95;
+	letter-spacing: -0.04em;
 }
-.scout-bar-fill {
-	width: 100%;
-	max-width: 48px;
-	min-height: 1px;
-	border-radius: var(--radius-s) var(--radius-s) 0 0;
-	background: var(--interactive-accent);
-}
-.scout-bar-value,
-.scout-bar-label {
-	font-size: var(--font-ui-smaller);
+.scout-stats-big span {
 	color: var(--text-muted);
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	max-width: 100%;
+	font-size: var(--font-ui-medium);
 }
-.scout-bar-label {
-	flex: 0 0 auto;
+.scout-stats-big em {
+	font-style: normal;
+	color: var(--text-faint);
 }
-
-/* Heatmap: a column per week, Monday at the top. */
-.scout-heatmap-scroll {
-	overflow-x: auto;
-}
-.scout-heatmap {
-	display: grid;
-	grid-template-rows: repeat(7, 11px);
-	grid-auto-flow: column;
-	grid-auto-columns: 11px;
+.scout-stats-split {
+	display: flex;
 	gap: 3px;
-	width: max-content;
-}
-.scout-heat {
-	border-radius: 2px;
-	background: var(--background-modifier-border);
-}
-.scout-heat.is-outside {
-	background: transparent;
-}
-.scout-heat.is-level-1 {
-	background: color-mix(in srgb, var(--interactive-accent) 35%, var(--background-modifier-border));
-}
-.scout-heat.is-level-2 {
-	background: color-mix(in srgb, var(--interactive-accent) 60%, var(--background-modifier-border));
-}
-.scout-heat.is-level-3 {
-	background: color-mix(in srgb, var(--interactive-accent) 80%, var(--background-modifier-border));
-}
-.scout-heat.is-level-4 {
-	background: var(--interactive-accent);
-}
-
-/* Meters, figures, lists */
-.scout-meter {
-	position: relative;
-	height: 6px;
-	border-radius: 3px;
-	background: var(--background-modifier-border);
+	height: 12px;
+	border-radius: 6px;
 	overflow: hidden;
 }
-.scout-meter-fill {
-	position: absolute;
-	inset: 0 auto 0 0;
-	background: var(--interactive-accent);
+.scout-stats-split span {
+	flex-basis: 0;
+	min-width: 4px;
 }
-.scout-stats-goals,
-.scout-stats-traits,
-.scout-stats-list {
+.scout-stats-legend {
 	list-style: none;
 	margin: 0;
 	padding: 0;
 	display: flex;
-	flex-direction: column;
-	gap: 8px;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+.scout-stats-legend button.scout-plain:not(.clickable-icon) {
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	padding: 5px 10px;
+	border-radius: 999px;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	font-size: var(--font-ui-small);
+	transition: border-color 120ms ease;
+}
+.scout-stats-legend button.scout-plain:not(.clickable-icon):hover {
+	border-color: var(--text-faint);
+}
+.scout-stats-legend .svg-icon {
+	color: var(--text-muted);
+}
+.scout-stats-swatch {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+}
+.scout-stats-kpis {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+	align-content: start;
+	gap: 10px;
+	margin: 0;
+}
+.scout-stats-kpis > div {
+	padding: 12px 14px;
+	border-radius: 10px;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+}
+.scout-stats-kpis dt {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	margin-bottom: 4px;
+}
+.scout-stats-kpis dd {
+	margin: 0;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+.scout-stats-kpis dd strong {
+	color: var(--text-normal);
+	font-size: 24px;
+	font-weight: 700;
+	letter-spacing: -0.02em;
+}
+
+/* Goals */
+.scout-stats-goal-prompt {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 12px 16px;
+	border: 1px dashed var(--background-modifier-border);
+	border-radius: var(--scout-card-radius);
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+.scout-stats-goal-prompt span {
+	flex: 1;
+}
+.scout-stats-goal-prompt button.scout-plain:not(.clickable-icon) {
+	color: var(--text-accent);
+	font-weight: 600;
+}
+.scout-stats-goals {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+	gap: 18px 24px;
 }
 .scout-stats-goals li {
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
+	gap: 6px;
+}
+.scout-stats-goal-line {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 8px;
+}
+.scout-stats-goal-line strong {
+	font-size: 20px;
+	font-weight: 700;
+}
+.scout-stats-goal-kind {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+.scout-stats-goals .scout-meter {
+	height: 8px;
+	border-radius: 4px;
+}
+.scout-stats-note.is-behind {
+	color: var(--text-warning, var(--color-orange));
 }
 .scout-stats-goal-edit {
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-	gap: 8px;
+	gap: 10px;
 }
 .scout-stats-goal-edit label {
 	display: flex;
 	flex-direction: column;
 	gap: 4px;
 	font-size: var(--font-ui-small);
+	color: var(--text-muted);
 }
-.scout-stats-trait {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) auto;
-	gap: 2px 8px;
-	width: 100%;
-	height: auto;
-	padding: 4px 6px;
-	text-align: start;
-	background: none;
-	box-shadow: none;
+
+/* Bars: a faint column for every slot, so an empty month still holds its place. */
+.scout-bars {
+	--scout-bar-color: var(--interactive-accent);
+	display: flex;
+	align-items: stretch;
+	gap: 6px;
+	height: 180px;
 }
-.scout-stats-trait:hover {
-	background: var(--background-modifier-hover);
+.scout-bars.is-compact {
+	gap: 3px;
+	height: 110px;
 }
-.scout-stats-trait .scout-meter {
-	grid-column: 1 / -1;
-}
-.scout-stats-trait-name {
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-.scout-stats-figures {
+.scout-bar {
+	flex: 1 1 0;
+	min-width: 0;
 	display: flex;
 	flex-direction: column;
-	gap: 10px;
-	margin: 0;
+	gap: 6px;
 }
-.scout-stats-figures dt {
+.scout-bar-track {
+	flex: 1;
+	display: flex;
+	align-items: flex-end;
+	padding-top: 18px;
+	border-radius: 6px;
+	background: color-mix(in srgb, var(--text-normal) 4%, transparent);
+}
+.scout-bar-fill {
+	position: relative;
+	width: 100%;
+	min-height: 0;
+	border-radius: 6px;
+	background: linear-gradient(
+		to top,
+		color-mix(in srgb, var(--scout-bar-color) 70%, transparent),
+		var(--scout-bar-color)
+	);
+	transition: height 300ms cubic-bezier(0.16, 1, 0.3, 1), filter 120ms ease;
+}
+.scout-bars.is-compact .scout-bar-track,
+.scout-bars.is-compact .scout-bar-fill {
+	border-radius: 4px;
+}
+.scout-bar-value {
+	position: absolute;
+	bottom: 100%;
+	left: 50%;
+	transform: translateX(-50%);
+	padding-bottom: 3px;
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	color: var(--text-normal);
+}
+.scout-bar-label {
+	text-align: center;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	min-height: 1.2em;
+}
+.scout-bar.is-current .scout-bar-label {
+	color: var(--text-normal);
+	font-weight: 600;
+}
+.scout-bar.is-current .scout-bar-track {
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--scout-bar-color) 45%, transparent);
+}
+.scout-bar:hover .scout-bar-fill {
+	filter: brightness(1.15);
+}
+
+/* Heatmap: a column per week, Monday at the top, stretched to the card. */
+.scout-heatmap-scroll {
+	overflow-x: auto;
+}
+.scout-heatmap-frame {
+	display: flex;
+	gap: 8px;
+	min-width: 560px;
+}
+.scout-heatmap-days {
+	display: grid;
+	grid-template-rows: repeat(7, 1fr);
+	gap: 3px;
+	padding-top: calc(1.2em + 6px);
+	font-size: 10px;
+	color: var(--text-faint);
+}
+.scout-heatmap-days span {
+	display: flex;
+	align-items: center;
+	line-height: 1;
+}
+.scout-heatmap-body {
+	flex: 1;
+	min-width: 0;
+}
+.scout-heatmap-months {
+	display: grid;
+	gap: 3px;
+	height: 1.2em;
+	margin-bottom: 6px;
 	font-size: var(--font-ui-smaller);
 	color: var(--text-faint);
 }
-.scout-stats-figures dd {
-	margin: 0;
+.scout-heatmap-months span {
+	grid-row: 1;
+	white-space: nowrap;
 }
+.scout-heatmap {
+	display: grid;
+	grid-template-rows: repeat(7, auto);
+	grid-auto-flow: column;
+	gap: 3px;
+}
+.scout-heat {
+	aspect-ratio: 1;
+	border-radius: 3px;
+	background: color-mix(in srgb, var(--text-normal) 7%, transparent);
+}
+.scout-heat.is-outside {
+	background: transparent;
+}
+.scout-heat.is-level-1 {
+	background: color-mix(in srgb, var(--interactive-accent) 35%, transparent);
+}
+.scout-heat.is-level-2 {
+	background: color-mix(in srgb, var(--interactive-accent) 60%, transparent);
+}
+.scout-heat.is-level-3 {
+	background: color-mix(in srgb, var(--interactive-accent) 80%, transparent);
+}
+.scout-heat.is-level-4 {
+	background: var(--interactive-accent);
+}
+.scout-heatmap-legend {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 4px;
+	margin-top: 10px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+}
+.scout-heatmap-legend .scout-heat {
+	width: 11px;
+}
+
+/* Ratings: the average beside its spread, one block per kind. */
+.scout-stats-ratings {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+	gap: 20px 32px;
+}
+.scout-stats-rating {
+	display: grid;
+	grid-template-columns: 96px minmax(0, 1fr);
+	align-items: end;
+	gap: 16px;
+}
+.scout-stats-rating-sum {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding-bottom: 22px;
+}
+.scout-stats-rating-kind {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+.scout-stats-rating-avg {
+	color: var(--text-faint);
+	font-size: var(--font-ui-medium);
+}
+.scout-stats-rating-avg strong {
+	color: var(--text-normal);
+	font-size: 34px;
+	font-weight: 800;
+	letter-spacing: -0.03em;
+}
+
+/* Ranked lists: genres and people. */
+.scout-stats-ranks,
+.scout-stats-rows {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+}
+.scout-stats-ranks button.scout-plain:not(.clickable-icon) {
+	display: grid;
+	grid-template-columns: 22px minmax(0, 1fr) auto 28px;
+	align-items: center;
+	gap: 10px;
+	width: 100%;
+	padding: 7px 8px;
+	border-radius: 8px;
+}
+.scout-stats-ranks button.scout-plain:not(.clickable-icon):hover,
+.scout-stats-rows button.scout-plain:not(.clickable-icon):hover {
+	background: var(--background-modifier-hover);
+}
+.scout-stats-rank {
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+	text-align: center;
+}
+.scout-stats-rank-main {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+	min-width: 0;
+}
+.scout-stats-rank-name,
+.scout-stats-row-title {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: var(--font-ui-small);
+	font-weight: 500;
+}
+.scout-stats-rank-bar {
+	display: block;
+	height: 4px;
+	border-radius: 2px;
+	background: color-mix(in srgb, var(--text-normal) 6%, transparent);
+	overflow: hidden;
+}
+.scout-stats-rank-bar span {
+	display: block;
+	height: 100%;
+	border-radius: inherit;
+	background: var(--interactive-accent);
+}
+.scout-stats-rank-count {
+	text-align: end;
+	font-weight: 600;
+	font-size: var(--font-ui-small);
+}
+.scout-stats-delta {
+	padding: 1px 6px;
+	border-radius: 999px;
+	font-size: 11px;
+	font-weight: 600;
+}
+.scout-stats-delta.is-up {
+	color: var(--scout-up);
+	background: color-mix(in srgb, var(--scout-up) 14%, transparent);
+}
+.scout-stats-delta.is-down {
+	color: var(--scout-down);
+	background: color-mix(in srgb, var(--scout-down) 14%, transparent);
+}
+.scout-stats-delta.is-even {
+	color: var(--text-faint);
+	background: color-mix(in srgb, var(--text-normal) 6%, transparent);
+}
+
+/* Plain rows: replays and the waiting list. */
+.scout-stats-rows li + li {
+	border-top: 1px solid var(--background-modifier-border);
+}
+.scout-stats-rows button.scout-plain:not(.clickable-icon) {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	width: 100%;
+	padding: 9px 8px;
+	border-radius: 8px;
+}
+.scout-stats-rows .svg-icon {
+	flex: none;
+	color: var(--text-faint);
+}
+.scout-stats-row-title {
+	flex: 1;
+	min-width: 0;
+}
+.scout-stats-row-value {
+	flex: none;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+/* Meters */
+.scout-meter {
+	--scout-bar-color: var(--interactive-accent);
+	position: relative;
+	height: 6px;
+	border-radius: 3px;
+	background: color-mix(in srgb, var(--text-normal) 7%, transparent);
+	overflow: hidden;
+}
+.scout-meter-fill {
+	position: absolute;
+	inset: 0 auto 0 0;
+	border-radius: inherit;
+	background: var(--scout-bar-color);
+}
+.scout-meter-marker {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	width: 2px;
+	margin-left: -1px;
+	background: var(--text-normal);
+	opacity: 0.6;
+}
+
+/* Tables */
 .scout-stats-table {
 	width: 100%;
 	border-collapse: collapse;
@@ -4319,15 +6182,1092 @@ body.is-phone .scout-combo-list li {
 }
 .scout-stats-table th,
 .scout-stats-table td {
-	padding: 3px 6px;
+	padding: 4px 6px;
 	border-bottom: 1px solid var(--background-modifier-border);
 	text-align: start;
 }
 
+@media (max-width: 760px) {
+	.scout-stats-hero {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
 body.is-phone .scout-stats-page {
-	padding: 14px 12px 40px;
+	padding: 16px 12px 40px;
+	gap: 14px;
+}
+body.is-phone .scout-stats-hero {
+	grid-template-columns: minmax(0, 1fr);
+	padding: 18px;
+}
+body.is-phone .scout-stats-big strong {
+	font-size: 52px;
+}
+body.is-phone .scout-stats-filters {
+	width: 100%;
+}
+body.is-phone .scout-stats-page .scout-segment {
+	max-width: 100%;
+	overflow-x: auto;
+	scrollbar-width: none;
 }
 body.is-phone .scout-bars {
-	gap: 2px;
-	height: 110px;
+	gap: 3px;
+	height: 140px;
 }
+body.is-phone .scout-stats-rating {
+	grid-template-columns: minmax(0, 1fr);
+}
+body.is-phone .scout-stats-rating-sum {
+	flex-direction: row;
+	align-items: baseline;
+	gap: 10px;
+	padding-bottom: 0;
+}
+
+/* ============================================================ detail: loading and motion */
+
+/* Placeholders hold the room the real thing will take, so nothing below them
+   jumps when the source answers. One soft sheen passes across them. */
+.sd-root .sd-bone {
+	display: block;
+	flex: none;
+	max-width: 100%;
+	border-radius: 6px;
+	background-color: var(--sd-el2);
+	background-image: linear-gradient(
+		90deg,
+		transparent,
+		color-mix(in srgb, var(--sd-tx) 8%, transparent),
+		transparent
+	);
+	background-size: 200% 100%;
+	background-repeat: no-repeat;
+	animation: sd-shimmer 1.5s ease-in-out infinite;
+}
+.sd-root .sd-bone.sd-round {
+	border-radius: 50%;
+}
+.sd-root .sd-loading {
+	background-color: var(--sd-el2);
+	background-image: linear-gradient(
+		90deg,
+		transparent,
+		color-mix(in srgb, var(--sd-tx) 8%, transparent),
+		transparent
+	);
+	background-size: 200% 100%;
+	background-repeat: no-repeat;
+	animation: sd-shimmer 1.5s ease-in-out infinite;
+}
+@keyframes sd-shimmer {
+	from { background-position: 150% 0; }
+	to { background-position: -50% 0; }
+}
+.sd-root .sd-score.sd-score-bone {
+	gap: 6px;
+	min-height: 46px;
+}
+.sd-root .sd-skel-col {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	flex: 1;
+	min-width: 0;
+}
+.sd-root .sd-cont.sd-skel .sd-skel-col {
+	justify-content: center;
+}
+.sd-root .sd-skel-lab {
+	margin-bottom: 8px;
+}
+.sd-root .sd-bone.sd-skel-tile {
+	border-radius: 9px;
+}
+.sd-root .sd-card .sd-skel-t {
+	margin: 8px 0 6px;
+}
+.sd-root .sd-skel-head {
+	margin: 20px 0 8px;
+}
+.sd-root .sd-skel-ep {
+	display: flex;
+	gap: 14px;
+	align-items: flex-start;
+	padding: 14px 0;
+	border-bottom: 1px solid var(--sd-line);
+}
+.sd-root .sd-skel .sd-pp {
+	cursor: default;
+}
+
+/* Pictures fade in once they have arrived rather than painting in strips. */
+.sd-root .sd-fillimg {
+	opacity: 0;
+	transition: opacity var(--sd-slow) var(--sd-ease);
+}
+.sd-root .sd-fillimg.sd-ready {
+	opacity: 1;
+}
+/* Each backdrop fades in over the one before it. */
+.sd-root .sd-bd-img {
+	animation: sd-fade 700ms var(--sd-ease) both;
+}
+
+@keyframes sd-fade {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
+@keyframes sd-rise {
+	from { opacity: 0; transform: translateY(6px); }
+	to { opacity: 1; transform: none; }
+}
+
+/* A tab's content rises into place, a beat apart, and so does anything that
+   arrives later, such as a section replacing its placeholder. */
+.sd-root .sd-pane > * {
+	animation: sd-rise var(--sd-slow) var(--sd-ease) both;
+}
+.sd-root .sd-pane > :nth-child(2) { animation-delay: 30ms; }
+.sd-root .sd-pane > :nth-child(3) { animation-delay: 60ms; }
+.sd-root .sd-pane > :nth-child(4) { animation-delay: 90ms; }
+.sd-root .sd-pane > :nth-child(n + 5) { animation-delay: 120ms; }
+/* In the header, late facts and scores fade where they land. */
+.sd-root .sd-fact,
+.sd-root .sd-scores > *,
+.sd-root .sd-watchbar,
+.sd-root .sd-tagline,
+.sd-root .sd-credits,
+.sd-root .sd-tab,
+.sd-root .sd-pdet,
+.sd-root .sd-pgrid > * {
+	animation: sd-fade var(--sd-slow) var(--sd-ease) both;
+}
+
+/* One underline that slides between tabs. */
+.sd-root .sd-tabs {
+	position: relative;
+}
+.sd-root .sd-tab.sd-on {
+	border-bottom-color: transparent;
+}
+.sd-root .sd-tabline {
+	position: absolute;
+	left: 0;
+	bottom: 0;
+	height: 2px;
+	border-radius: 2px 2px 0 0;
+	background: var(--sd-ac);
+	pointer-events: none;
+}
+.sd-root .sd-tabline.sd-moving {
+	transition:
+		transform var(--sd-slow) var(--sd-ease),
+		width var(--sd-slow) var(--sd-ease);
+}
+
+/* Cards in a rail: a plate lifts under the pointer, as on the library's cards.
+   The rail is pulled out by the plate's padding so the posters still line up
+   with the text above them. */
+.sd-root .sd-rail {
+	gap: 4px;
+	margin: 0 -6px;
+}
+.sd-root .sd-card {
+	width: 108px;
+	padding: 6px;
+	border-radius: 10px;
+}
+.sd-root .sd-card.sd-wide {
+	width: 180px;
+}
+.sd-root .sd-card.sd-sq {
+	width: 124px;
+}
+.sd-root button.sd-card:hover {
+	background: var(--sd-el);
+}
+.sd-root button.sd-card:active {
+	background: var(--sd-el2);
+}
+
+/* A press gives a little. */
+.sd-root .sd-btn:active:not(:disabled),
+.sd-root button.sd-tile:active,
+.sd-root button.sd-card:active,
+.sd-root .sd-score.sd-you:active,
+.sd-root .sd-pgrid .sd-pp:active {
+	transform: scale(0.97);
+	transition-duration: 60ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.sd-root *,
+	.sd-root *::before,
+	.sd-root *::after {
+		animation-duration: 1ms !important;
+		animation-delay: 0ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 1ms !important;
+	}
+}
+
+/* ======================================================= library lens bar */
+
+/* Sort and grouping: a pill each. The arrow beside the sort flips it. */
+.scout-order {
+	display: inline-flex;
+	gap: 6px;
+	flex: 0 0 auto;
+}
+.scout-order-pill {
+	display: inline-flex;
+	align-items: stretch;
+	height: var(--scout-control-h, 30px);
+	border-radius: var(--scout-radius, 6px);
+	background: var(--background-modifier-border);
+	overflow: hidden;
+}
+.scout-order-pill button {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 100%;
+	padding: 0 10px;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-normal);
+	font-size: 13px;
+	white-space: nowrap;
+}
+.scout-order-pill button:hover {
+	background: var(--background-modifier-hover);
+}
+.scout-order-pill .scout-icon {
+	color: var(--text-muted);
+}
+.scout-order-pill.is-on > button:first-child .scout-icon {
+	color: var(--text-accent);
+}
+.scout-order-pill .scout-order-flip {
+	padding: 0 8px;
+	border-inline-start: 1px solid var(--background-primary);
+}
+
+/* The line that says what is on screen. */
+.scout-filter-bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: var(--scout-control-h, 30px);
+}
+.scout-filter-anchor {
+	position: relative;
+	flex: 0 0 auto;
+}
+.scout-filter-add {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: var(--scout-control-h, 30px);
+	padding: 0 10px;
+	border-radius: var(--scout-radius, 6px);
+	font-size: 13px;
+}
+.scout-filter-add.is-on {
+	color: var(--text-accent);
+}
+.scout-filter-chips {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex: 1 1 0%;
+	min-width: 0;
+	overflow: auto hidden;
+	touch-action: pan-x;
+	scrollbar-width: none;
+}
+.scout-filter-chips::-webkit-scrollbar {
+	display: none;
+}
+.scout-filter-chip {
+	display: inline-flex;
+	align-items: stretch;
+	flex: 0 0 auto;
+	height: 26px;
+	border-radius: 999px;
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	overflow: hidden;
+	animation: scout-chip-in 160ms var(--scout-ease);
+}
+.scout-filter-chip.is-extra {
+	background: var(--background-modifier-border);
+	color: var(--text-normal);
+	max-width: 320px;
+}
+.scout-filter-chip button {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	height: 100%;
+	padding: 0 4px 0 11px;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+	color: inherit;
+	font-size: 12px;
+	font-weight: 550;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.scout-filter-chip .scout-filter-chip-x {
+	padding: 0 8px 0 4px;
+	opacity: 0.75;
+}
+.scout-filter-chip .scout-filter-chip-x:hover {
+	opacity: 1;
+}
+@keyframes scout-chip-in {
+	from {
+		opacity: 0;
+		transform: scale(0.9);
+	}
+}
+.scout-filter-hint {
+	flex: 0 0 auto;
+	color: var(--text-faint);
+	font-size: 12px;
+}
+.scout-filter-preset {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	flex: 0 0 auto;
+	height: 26px;
+	padding: 0 10px;
+	border-radius: 999px;
+	background: transparent;
+	box-shadow: inset 0 0 0 1px var(--background-modifier-border);
+	color: var(--text-muted);
+	font-size: 12px;
+	white-space: nowrap;
+}
+.scout-filter-preset:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+.scout-filter-save {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	flex: 0 0 auto;
+}
+.scout-filter-save button {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	height: 28px;
+	font-size: 12px;
+	border-radius: var(--scout-radius, 6px);
+}
+
+/* ------------------------------------------------------------- the picker */
+
+.scout-picker {
+	position: absolute;
+	inset-block-start: calc(100% + 6px);
+	inset-inline-start: 0;
+	z-index: var(--layer-popover, 30);
+	display: flex;
+	flex-direction: column;
+	width: min(460px, calc(100cqi - 32px));
+	max-height: min(70vh, 560px);
+	border-radius: 10px;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	box-shadow: var(--shadow-l);
+	animation: scout-picker-in 160ms var(--scout-ease);
+	transform-origin: top left;
+}
+@keyframes scout-picker-in {
+	from {
+		opacity: 0;
+		transform: translateY(-4px) scale(0.98);
+	}
+}
+.scout-picker-tabs {
+	display: flex;
+	gap: 2px;
+	padding: 6px 6px 0;
+	overflow: auto hidden;
+	scrollbar-width: none;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+.scout-picker-tabs::-webkit-scrollbar {
+	display: none;
+}
+/* Seven panes: icon over word lets every tab show in the picker's width,
+   where side by side the last two fell off the end. */
+.scout-picker-tabs button {
+	display: inline-flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 3px;
+	flex: 1 0 auto;
+	position: relative;
+	height: 46px;
+	padding: 0 6px;
+	border-radius: 6px 6px 0 0;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+	font-size: 12px;
+	border-bottom: 2px solid transparent;
+	margin-bottom: -1px;
+}
+/* Over the icon's shoulder, where it no longer pushes the word sideways. */
+.scout-picker-tabs .scout-view-dirty {
+	position: absolute;
+	top: 7px;
+	left: calc(50% + 8px);
+}
+.scout-picker-tabs button.is-on {
+	color: var(--text-normal);
+	font-weight: 550;
+	border-bottom-color: var(--interactive-accent);
+}
+.scout-picker-body {
+	flex: 1 1 auto;
+	overflow-y: auto;
+	padding: 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+}
+.scout-picker-foot {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 8px 12px;
+	border-top: 1px solid var(--background-modifier-border);
+}
+.scout-picker-foot button {
+	height: 28px;
+	font-size: 12px;
+}
+.scout-pick-section {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+.scout-pick-label {
+	color: var(--text-faint);
+	font-size: 11px;
+	font-weight: 600;
+}
+.scout-pick-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+.scout-pick-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+.scout-pick-chip {
+	display: inline-flex;
+	align-items: stretch;
+	height: 28px;
+	border-radius: 999px;
+	background: var(--background-secondary);
+	box-shadow: inset 0 0 0 1px var(--background-modifier-border);
+	overflow: hidden;
+	transition: background 90ms var(--scout-ease), color 90ms var(--scout-ease);
+}
+.scout-pick-chip button {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	height: 100%;
+	padding: 0 11px;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-normal);
+	font-size: 12px;
+	white-space: nowrap;
+}
+.scout-pick-chip button:hover {
+	background: var(--background-modifier-hover);
+}
+.scout-pick-chip.is-on {
+	background: var(--interactive-accent);
+	box-shadow: none;
+}
+.scout-pick-chip.is-on button {
+	color: var(--text-on-accent);
+}
+.scout-pick-chip.is-off {
+	background: var(--background-modifier-error);
+	box-shadow: none;
+}
+.scout-pick-chip.is-off button {
+	color: var(--text-on-accent);
+	text-decoration: line-through;
+}
+.scout-pick-chip .scout-pick-more {
+	padding: 0 8px 0 4px;
+	border-inline-start: 1px solid var(--background-modifier-border);
+}
+.scout-pick-count {
+	font-size: 11px;
+	opacity: 0.6;
+	font-variant-numeric: tabular-nums;
+}
+.scout-pick-families {
+	display: flex;
+	gap: 4px;
+	flex-wrap: wrap;
+}
+.scout-pick-families button {
+	height: 24px;
+	padding: 0 10px;
+	font-size: 12px;
+	border-radius: 999px;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+}
+.scout-pick-families button.is-on {
+	background: var(--background-modifier-border);
+	color: var(--text-normal);
+	font-weight: 550;
+}
+.scout-pick-genres {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+.scout-pick-subs {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 10px;
+	border-radius: 8px;
+	background: var(--background-secondary);
+	animation: scout-picker-in 140ms var(--scout-ease);
+}
+.scout-pick-years {
+	flex-direction: row;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	color: var(--text-muted);
+	font-size: 12px;
+}
+.scout-pick-years .scout-pick-label {
+	flex-basis: 100%;
+}
+.scout-pick-years input {
+	width: 84px;
+	height: 28px;
+}
+.scout-pick-search {
+	width: 100%;
+	height: 30px;
+}
+.scout-pick-empty {
+	margin: 0;
+	color: var(--text-muted);
+	font-size: 13px;
+}
+.scout-segment {
+	display: inline-flex;
+	gap: 2px;
+	padding: 2px;
+	border-radius: var(--scout-radius, 6px);
+	background: var(--background-modifier-border);
+}
+.scout-segment button {
+	height: 24px;
+	padding: 0 10px;
+	font-size: 12px;
+	border-radius: calc(var(--scout-radius, 6px) - 2px);
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+}
+.scout-segment button.is-on {
+	background: var(--background-primary);
+	color: var(--text-normal);
+}
+
+/* On a phone the picker is a sheet from the bottom, in reach of a thumb. */
+body.is-phone .scout-picker {
+	position: fixed;
+	inset: auto 0 0 0;
+	width: auto;
+	max-height: 75vh;
+	border-radius: 14px 14px 0 0;
+	transform-origin: bottom center;
+	padding-bottom: env(safe-area-inset-bottom, 0);
+}
+body.is-phone .scout-pick-chip {
+	height: 34px;
+}
+body.is-phone .scout-pick-chip button {
+	font-size: 14px;
+}
+
+/* -------------------------------------------------------- group headers */
+
+/* A heading that folds its shelf away. */
+.scout-library button.scout-group-title {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: auto;
+	padding: 2px 6px 2px 2px;
+	background: transparent;
+	box-shadow: none;
+	cursor: pointer;
+}
+.scout-library button.scout-group-title:hover {
+	color: var(--text-normal);
+}
+.scout-group-title .scout-icon {
+	transition: transform 160ms var(--scout-ease);
+}
+.scout-group.is-folded .scout-group-title .scout-icon {
+	transform: rotate(-90deg);
+}
+
+/* ------------------------------------------------------------- list rows */
+
+/* Three columns on a wide pane — what it is, what kind of thing, what you made
+   of it — so the middle of a wide row says something instead of being a gap
+   between a title on the left and a rating on the right. The middle goes
+   first as the pane narrows. */
+.scout-entries-list {
+	gap: 2px;
+}
+.scout-entries-list .scout-entry {
+	gap: 12px;
+	padding: 6px 10px 6px 6px;
+	background: transparent;
+	border-radius: var(--scout-radius, 6px);
+}
+.scout-entries-list .scout-entry:nth-child(odd) {
+	background: var(--background-secondary);
+}
+.scout-entries-list .scout-entry:hover {
+	background: var(--background-modifier-hover);
+}
+.scout-entries-list .scout-entry-art {
+	width: 32px;
+	height: 48px;
+}
+.scout-entries-list .scout-entry-info {
+	display: grid;
+	grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) auto;
+	grid-template-areas:
+		"title aside foot"
+		"meta aside foot";
+	column-gap: 20px;
+	row-gap: 1px;
+	align-items: center;
+}
+.scout-entries-list .scout-entry h4 {
+	grid-area: title;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.scout-entries-list .scout-entry-meta {
+	grid-area: meta;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 12px;
+	color: var(--text-muted);
+}
+.scout-entries-list .scout-entry-aside {
+	grid-area: aside;
+	display: flex;
+	gap: 5px;
+	overflow: hidden;
+}
+.scout-entries-list .scout-entry-foot {
+	grid-area: foot;
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 10px;
+	min-width: 190px;
+	margin: 0;
+}
+.scout-entry-genre {
+	flex: 0 0 auto;
+	padding: 1px 8px;
+	border-radius: 999px;
+	background: var(--background-modifier-border);
+	color: var(--text-muted);
+	font-size: 11px;
+	white-space: nowrap;
+}
+@container scout-library (max-width: 720px) {
+	.scout-entries-list .scout-entry-info {
+		grid-template-columns: minmax(0, 1fr) auto;
+		grid-template-areas:
+			"title foot"
+			"meta foot";
+	}
+	.scout-entries-list .scout-entry-aside {
+		display: none;
+	}
+	.scout-entries-list .scout-entry-foot {
+		min-width: 0;
+	}
+}
+@container scout-library (max-width: 480px) {
+	.scout-entries-list .scout-entry-info {
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-areas:
+			"title"
+			"meta"
+			"foot";
+	}
+	.scout-entries-list .scout-entry-foot {
+		justify-content: flex-start;
+	}
+}
+
+/* ------------------------------------------------------------------ table */
+
+/* Fixed widths, so numbers line up from one group's table to the next and a
+   wide window gives its room to the title, not to the gaps. */
+.scout-table {
+	table-layout: fixed;
+}
+.scout-table th {
+	position: sticky;
+	top: 0;
+	z-index: 1;
+	background: var(--background-primary);
+	padding: 0;
+}
+.scout-table th button {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	width: 100%;
+	height: 30px;
+	padding: 0 10px;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+	color: inherit;
+	font: inherit;
+	justify-content: flex-start;
+}
+.scout-table th:not(:has(button)) {
+	padding: 0 10px;
+}
+.scout-table th button:hover,
+.scout-table th button.is-on {
+	color: var(--text-normal);
+}
+.scout-table td {
+	padding: 5px 10px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--text-muted);
+}
+.scout-table td.scout-col-title {
+	color: var(--text-normal);
+}
+.scout-col-title {
+	width: auto;
+}
+.scout-col-by {
+	width: 17%;
+}
+.scout-col-genre {
+	width: 15%;
+}
+.scout-col-year {
+	width: 64px;
+}
+.scout-col-rating {
+	width: 84px;
+}
+.scout-col-source {
+	width: 72px;
+}
+.scout-col-status {
+	width: 128px;
+}
+.scout-col-added {
+	width: 92px;
+}
+.scout-table-title {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+}
+.scout-table-cover {
+	flex: 0 0 auto;
+	width: 20px;
+	height: 30px;
+	border-radius: 3px;
+	overflow: hidden;
+}
+.scout-table-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.scout-table-of {
+	color: var(--text-faint);
+	font-size: 11px;
+}
+.scout-table td.scout-col-rating strong {
+	color: var(--text-normal);
+	font-weight: 600;
+}
+.scout-table .scout-table-fav {
+	margin: 0;
+}
+@container scout-library (max-width: 1000px) {
+	.scout-table .scout-col-added,
+	.scout-table .scout-col-genre {
+		display: none;
+	}
+}
+@container scout-library (max-width: 700px) {
+	.scout-table .scout-col-by,
+	.scout-table .scout-col-source {
+		display: none;
+	}
+}
+@container scout-library (max-width: 480px) {
+	.scout-table .scout-col-year {
+		display: none;
+	}
+	.scout-col-status {
+		width: 104px;
+	}
+}
+
+/* ------------------------------------------------------------------ board */
+
+/* Columns side by side, each scrolling on its own, filling the height of the
+   page so the whole board is one screen. A few columns share the width; more
+   than fit scroll sideways, with a visible scrollbar to do it with. */
+.scout-library-body.is-board {
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	padding-bottom: 12px;
+}
+.scout-board {
+	display: flex;
+	gap: 12px;
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-x: auto;
+	overflow-y: hidden;
+	padding-bottom: 4px;
+}
+.scout-board-col {
+	display: flex;
+	flex-direction: column;
+	flex: 1 0 260px;
+	max-width: 380px;
+	min-height: 0;
+	border-radius: 10px;
+	background: var(--background-secondary);
+}
+.scout-board-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 10px 12px 6px;
+	font-size: 13px;
+	font-weight: 600;
+}
+.scout-board-cards.scout-entries-list {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	padding: 2px 6px 8px;
+	gap: 4px;
+}
+.scout-board-cards.scout-entries-list .scout-entry,
+.scout-board-cards.scout-entries-list .scout-entry:nth-child(odd) {
+	background: var(--background-primary);
+	padding: 6px;
+}
+.scout-board-cards.scout-entries-list .scout-entry:hover {
+	background: var(--background-modifier-hover);
+}
+.scout-board-cards .scout-entry-info,
+.scout-board-cards.scout-entries-list .scout-entry-info {
+	grid-template-columns: minmax(0, 1fr);
+	grid-template-areas:
+		"title"
+		"meta"
+		"foot";
+}
+.scout-board-cards.scout-entries-list .scout-entry-foot {
+	justify-content: flex-start;
+	min-width: 0;
+	margin-top: 3px;
+}
+.scout-board-cards .scout-entry-aside {
+	display: none;
+}
+.scout-board-more {
+	margin: 4px 0 0;
+	font-size: 12px;
+}
+body.is-phone .scout-board {
+	scroll-snap-type: x mandatory;
+}
+body.is-phone .scout-board-col {
+	flex-basis: 82%;
+	scroll-snap-align: start;
+}
+/* The Scout score's working: each source's number, and what it is on Scout's scale. */
+.sd-root .sd-score.sd-scout {
+	cursor:default;
+}
+.sd-root .sd-score.sd-scout:focus-visible {
+	outline:2px solid var(--sd-ac);
+	outline-offset:1px;
+}
+.scout-score-pop.scout-blend {
+	width:min(300px, calc(100vw - 24px));
+	padding:8px 0 6px;
+}
+/* Three columns: the source, what it said and what that counts as on Scout's
+   scale, and its share of the weight as a bar against the biggest share. */
+.scout-blend-row {
+	display:grid;
+	grid-template-columns:minmax(0,1fr) auto 84px;
+	align-items:center;
+	gap:10px;
+	padding:3px 12px;
+	font-variant-numeric:tabular-nums;
+}
+.scout-blend-head {
+	padding-bottom:5px;
+	color:var(--text-faint);
+	font-size:10.5px;
+	font-weight:600;
+	letter-spacing:0.04em;
+	text-transform:uppercase;
+}
+.scout-blend-head span:nth-child(2) { text-align:right; }
+.scout-blend-name {
+	display:flex;
+	flex-direction:column;
+	min-width:0;
+	color:var(--text-muted);
+	white-space:nowrap;
+	overflow:hidden;
+	text-overflow:ellipsis;
+}
+/* So few votes that it counts for less: said once, under its name. */
+.scout-blend-name small {
+	color:var(--text-faint);
+	font-size:10.5px;
+	line-height:1.2;
+}
+.scout-blend-score {
+	display:inline-flex;
+	align-items:baseline;
+	justify-content:flex-end;
+	gap:5px;
+}
+.scout-blend-says { color:var(--text-muted); }
+.scout-blend-to { color:var(--text-faint); font-size:11px; }
+.scout-blend-score b {
+	min-width:24px;
+	font-weight:700;
+	text-align:right;
+}
+.scout-blend-weight {
+	display:grid;
+	grid-template-columns:1fr 28px;
+	align-items:center;
+	gap:6px;
+	color:var(--text-faint);
+	font-size:11px;
+	text-align:right;
+}
+.scout-blend-bar {
+	height:4px;
+	border-radius:2px;
+	background:var(--background-modifier-border);
+	overflow:hidden;
+}
+.scout-blend-bar i {
+	display:block;
+	height:100%;
+	border-radius:2px;
+	background:var(--interactive-accent);
+}
+/* How the weighted blend becomes the score: each step a signed number, adding
+   up to the total underneath. */
+.scout-blend-sum {
+	margin:6px 12px 0;
+	padding-top:6px;
+	border-top:1px solid var(--background-modifier-border);
+}
+/* Hype has no table above it, so no rule either. */
+.scout-blend-sum.is-alone {
+	margin-top:0;
+	padding-top:0;
+	border-top:0;
+}
+.scout-score-pop.scout-blend.is-hype { width:min(300px, calc(100vw - 24px)); }
+/* What the number is, said once above the working. */
+.scout-blend-note {
+	padding-bottom:6px;
+	color:var(--text-faint);
+	font-size:11px;
+}
+/* Each thing known about the film is the working here, so it reads as a row,
+   with what exactly underneath, cut short rather than wrapped. */
+.is-hype .scout-blend-line.is-step { color:var(--text-muted); font-size:12.5px; }
+.is-hype .scout-blend-name small {
+	overflow:hidden;
+	text-overflow:ellipsis;
+}
+.scout-blend-line {
+	display:flex;
+	justify-content:space-between;
+	align-items:center;
+	gap:10px;
+	padding:2px 0;
+	color:var(--text-muted);
+	font-variant-numeric:tabular-nums;
+}
+.scout-blend-line.is-step { color:var(--text-faint); font-size:12px; }
+.scout-blend-line.is-total {
+	color:var(--text-normal);
+	font-weight:600;
+}
+.scout-blend-line.is-total span {
+	display:inline-flex;
+	align-items:center;
+	gap:5px;
+}
+.scout-blend-line.is-total b { font-size:14px; }

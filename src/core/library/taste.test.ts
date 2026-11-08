@@ -203,8 +203,10 @@ describe("buildTaste", () => {
 		);
 		// Memoir is this reader's best book by a mile. Against an average pulled
 		// up by the films it reads as a disappointment.
-		expect(affinity(taste, "genre", "memoir")?.score ?? 0).toBeGreaterThan(0);
-		expect(affinity(taste, "genre", "cookery")?.score ?? 0).toBeLessThan(0);
+		// Read in Scout's vocabulary: memoir and cookery are what it calls
+		// "Biography & memoir" and "Food & drink".
+		expect(affinity(taste, "genre", "biography & memoir")?.score ?? 0).toBeGreaterThan(0);
+		expect(affinity(taste, "genre", "food & drink")?.score ?? 0).toBeLessThan(0);
 	});
 
 	// A to-read pile is an intention, not a preference.
@@ -462,7 +464,7 @@ describe("scoreCandidate", () => {
 		const against = verdict.reasons.filter((one) => one.against);
 
 		expect(forIt.map((one) => one.label)).toContain("Denis Villeneuve");
-		expect(forIt.map((one) => one.label)).toContain("Science Fiction");
+		expect(forIt.map((one) => one.label)).toContain("Science fiction");
 		expect(forIt.map((one) => one.label)).not.toContain("Romance");
 		expect(against.map((one) => one.label)).toContain("Romance");
 	});
@@ -477,7 +479,7 @@ describe("scoreCandidate", () => {
 			"Denis Villeneuve",
 		);
 		expect(verdict.reasons.find((one) => one.kind === "genre")?.label).toBe(
-			"Science Fiction",
+			"Science fiction",
 		);
 	});
 
@@ -552,7 +554,7 @@ describe("topTraits", () => {
 
 	it("names what you go for, strongest first", () => {
 		const liked = topTraits(profile, "genre", 3);
-		expect(liked[0]?.label).toBe("Science Fiction");
+		expect(liked[0]?.label).toBe("Science fiction");
 		expect(liked.map((one) => one.label)).not.toContain("Romance");
 	});
 
@@ -560,15 +562,15 @@ describe("topTraits", () => {
 	it("names what you avoid by walking the same list backwards", () => {
 		const avoided = topTraits(profile, "genre", 3, "disliked");
 		expect(avoided[0]?.label).toBe("Romance");
-		expect(avoided.map((one) => one.label)).not.toContain("Science Fiction");
+		expect(avoided.map((one) => one.label)).not.toContain("Science fiction");
 	});
 
 	it("says how much of your library each one was learned from", () => {
 		expect(topTraits(profile, "genre", 1)[0]?.affinity.count).toBe(3);
 	});
 
-	it("keeps the spelling you used, not the folded key", () => {
-		expect(topTraits(profile, "genre", 1)[0]?.label).toBe("Science Fiction");
+	it("shows a known genre in Scout's spelling, not the folded key", () => {
+		expect(topTraits(profile, "genre", 1)[0]?.label).toBe("Science fiction");
 	});
 
 	/**

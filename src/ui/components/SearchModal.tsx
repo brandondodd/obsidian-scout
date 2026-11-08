@@ -4,6 +4,9 @@ import type { ScoutContext } from "../../core/context";
 import { isAbortError } from "../../core/http";
 import { isResolvable, isSearchable } from "../../core/provider";
 import { rankResults } from "../../core/ranking";
+import { hypeOfItem } from "../../core/hype";
+import { scoutOfItem } from "../../core/scout-score";
+import type { ScoreLog } from "../../core/settings/cacheFile";
 import type { ViewMode } from "../../core/settings/store";
 import {
 	MEDIA_KIND_LABELS,
@@ -12,6 +15,14 @@ import {
 } from "../../core/types";
 import { ScoutDetailModal } from "../detailModal";
 import { Cover, Icon, KIND_ICONS, useLibraryEntries } from "./shared";
+
+/** ` · ★ 7.2` on Scout's scale, ` · forecast 8.0` for one not out yet, or nothing. */
+function scoutLine(item: MediaItem, filed: Readonly<ScoreLog>): string {
+	const score = scoutOfItem(item);
+	if (score !== undefined) return ` · ★ ${score.toFixed(1)}`;
+	const hype = hypeOfItem(item, filed);
+	return hype === undefined ? "" : ` · forecast ${hype.toFixed(1)}`;
+}
 
 /**
  * One search UI for every provider.
@@ -220,7 +231,7 @@ export default function SearchModal({
 		const sorted = rankResults(filtered, resultQuery);
 		switch (sortBy) {
 			case "rating-desc":
-				sorted.sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+				sorted.sort((a, b) => (scoutOfItem(b) ?? 0) - (scoutOfItem(a) ?? 0));
 				break;
 			case "year-desc":
 				sorted.sort((a, b) => (b.year ?? 0) - (a.year ?? 0));
@@ -405,10 +416,7 @@ export default function SearchModal({
 											/>
 											{MEDIA_KIND_LABELS[item.ref.kind]}
 											{item.year ? ` · ${item.year}` : ""}
-											{typeof item.rating === "number" &&
-											item.rating > 0
-												? ` · ★ ${item.rating.toFixed(1)}`
-												: ""}
+											{scoutLine(item, ctx.settings.scores())}
 										</p>
 										{viewMode === "list" && item.description && (
 											<p className="scout-result-desc">

@@ -14,6 +14,7 @@ export type MediaKind =
 	| "game"
 	| "anime"
 	| "manga"
+	| "album"
 	| "link";
 
 export const ALL_MEDIA_KINDS: readonly MediaKind[] = [
@@ -23,6 +24,7 @@ export const ALL_MEDIA_KINDS: readonly MediaKind[] = [
 	"game",
 	"anime",
 	"manga",
+	"album",
 	"link",
 ];
 
@@ -34,6 +36,7 @@ export const MEDIA_KIND_LABELS: Record<MediaKind, string> = {
 	game: "Game",
 	anime: "Anime",
 	manga: "Manga",
+	album: "Album",
 	link: "Web link",
 };
 
@@ -51,6 +54,7 @@ export const MEDIA_KIND_PLURALS: Record<MediaKind, string> = {
 	game: "Games",
 	anime: "Anime",
 	manga: "Manga",
+	album: "Albums",
 	link: "Web links",
 };
 
@@ -152,6 +156,11 @@ export interface EpisodeInfo {
 	/** Minutes. */
 	runtime?: number;
 	stillUrl?: string;
+	/**
+	 * Known not to be out yet, for sources that say so without giving a date.
+	 * An air date in the future means the same thing.
+	 */
+	upcoming?: boolean;
 }
 
 /**

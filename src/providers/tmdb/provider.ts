@@ -1,3 +1,4 @@
+import { canonicalGenres } from "../../core/genres/genres";
 import type {
 	SeriesAware,
 	Detailable,
@@ -5,6 +6,8 @@ import type {
 	DiscoverQuery,
 	Enrichable,
 	Episodic,
+	Extended,
+	Foreseeing,
 	MediaProvider,
 	ProviderContext,
 	ProviderTraits,
@@ -23,6 +26,15 @@ import type {
 	MediaRef,
 	SeasonInfo,
 } from "../../core/types";
+import type { ItemExtras } from "../../core/detail/types";
+import type { EarlierFilm, Outlook } from "../../core/hype";
+import { FALLBACK_REGION } from "../../core/region";
+import {
+	MOVIE_APPEND,
+	toExtras,
+	TV_APPEND,
+	type TmdbExtrasResponse,
+} from "./extras";
 import { genreIds, genreNames } from "./genres";
 
 /**
@@ -35,6 +47,28 @@ import { genreIds, genreNames } from "./genres";
  */
 
 const API = "https://api.themoviedb.org/3";
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** A film with fewer TMDB votes than this has not settled, so says little about the next. */
+const SETTLED_VOTES = 50;
+/** Other collections of the same series to read; each is a request. */
+const MAX_SIBLING_COLLECTIONS = 2;
+
+/**
+ * The series a collection is of: "The Hunger Games – New Trilogy Collection"
+ * and "The Hunger Games Collection" are both "The Hunger Games". Only TMDB's
+ * dash, not a colon: "Spider-Man: Spider-Verse" is not the Raimi films.
+ */
+export function seriesBase(name: string | undefined): string | undefined {
+	if (!name) return undefined;
+	const base = name
+		.replace(/\s+collection$/i, "")
+		.split(/\s+[–—-]\s+/)[0]
+		?.trim();
+	return base ? base : undefined;
+}
+
+/** Co-directors beyond this are rare, and each is a request. */
+const MAX_DIRECTORS = 3;
 const IMAGE = "https://image.tmdb.org/t/p";
 
 const NO_POSTER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="500" height="750" viewBox="0 0 500 750"><rect fill="#e6e6e6" width="100%" height="100%"/><g fill="#9b9b9b" font-family="system-ui, sans-serif" font-weight="600"><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="48">No Image</text></g></svg>`;
@@ -87,6 +121,7 @@ interface TmdbDetails extends TmdbSearchItem {
 	number_of_episodes?: number;
 	seasons?: TmdbSeason[];
 	belongs_to_collection?: { id: number; name?: string } | null;
+	budget?: number;
 	status?: string;
 	tagline?: string;
 	original_language?: string;
@@ -165,7 +200,10 @@ function toItem(raw: TmdbDetails, kind: MediaKind): MediaItem {
 		description: raw.overview || undefined,
 		// Detail responses name the genres; every list response only numbers
 		// them, and a suggestion with no genres cannot be ranked on genre.
-		tags: raw.genres?.map((g) => g.name) ?? genreNames(raw.genre_ids),
+		tags: canonicalGenres(
+			kind,
+			raw.genres?.map((g) => g.name) ?? genreNames(raw.genre_ids),
+		),
 		people: [...directors, ...cast],
 		externalUrl: `https://www.themoviedb.org/${kind}/${raw.id}`,
 		releaseDate: date || undefined,
@@ -227,10 +265,12 @@ export class TmdbProvider
 		Detailable,
 		Resolvable,
 		Episodic,
+		Extended,
 		SeriesAware,
 		Recommendable,
 		Discoverable,
-		Enrichable
+		Enrichable,
+		Foreseeing
 {
 	readonly id = "tmdb";
 	readonly name = "TMDB (movies & TV)";
@@ -317,6 +357,28 @@ export class TmdbProvider
 			cacheTtlMs: 30 * 60 * 1000,
 		});
 		return toItem(raw, ref.kind);
+	}
+
+	/**
+	 * Everything the detail dialog shows, in one request.
+	 *
+	 * Its own URL rather than `detailUrl`'s, because that one is shared with the
+	 * refresher, and the background job has no use for a cast list or for the
+	 * streaming services of every country TMDB knows about.
+	 */
+	async extras(ref: MediaRef, ctx: RequestContext): Promise<ItemExtras> {
+		const tv = ref.kind === "tv";
+		const raw = await this.ctx.http.getJson<TmdbExtrasResponse>(
+			`${API}/${tv ? "tv" : "movie"}/${ref.id}?append_to_response=${
+				tv ? TV_APPEND : MOVIE_APPEND
+			}`,
+			{
+				headers: this.headers(),
+				signal: ctx.signal,
+				cacheTtlMs: 30 * 60 * 1000,
+			},
+		);
+		return toExtras(raw, ref.kind, ctx.region ?? FALLBACK_REGION);
 	}
 
 	/**
@@ -480,6 +542,121 @@ export class TmdbProvider
 				.map((part) => toItem(part, "movie"))
 				// Release order, which is the order a series is meant in.
 				.sort((a, b) => (a.year ?? 9999) - (b.year ?? 9999)),
+		};
+	}
+
+	/* ------------------------------------------------------------ outlook */
+
+	/**
+	 * What is known about a film before it is out: its series' and directors'
+	 * earlier films, its genres, its budget. The film itself is the request
+	 * `details` makes; then one for its series and one per director, each
+	 * cached for a day, since the films they list are long since settled.
+	 */
+	async outlook(ref: MediaRef, ctx: RequestContext): Promise<Outlook | null> {
+		if (ref.kind !== "movie") return null;
+		const get = <T>(url: string, cacheTtlMs: number) =>
+			this.ctx.http.getJson<T>(url, { headers: this.headers(), signal: ctx.signal, cacheTtlMs });
+		const film = await get<TmdbDetails>(this.detailUrl(ref), 30 * 60 * 1000);
+		const crew =
+			film.credits?.crew ??
+			(await get<{ crew?: { id?: number; name: string; job: string }[] }>(
+				`${API}/movie/${ref.id}/credits`,
+				DAY_MS,
+			)).crew ??
+			[];
+		const directors = crew
+			.filter((one) => one.job === "Director" && one.id !== undefined)
+			.slice(0, MAX_DIRECTORS);
+
+		// Out before this one, and rated by enough people for the average to
+		// have settled: the same films the hype was fitted on.
+		const earlier = (one: TmdbSearchItem): boolean =>
+			one.id !== film.id &&
+			!!one.release_date &&
+			(!film.release_date || one.release_date < film.release_date) &&
+			(one.vote_count ?? 0) >= SETTLED_VOTES &&
+			(one.vote_average ?? 0) > 0;
+
+		const collection = film.belongs_to_collection
+			? await get<{ name?: string; parts?: TmdbSearchItem[] }>(
+					`${API}/collection/${film.belongs_to_collection.id}`,
+					DAY_MS,
+				)
+			: undefined;
+		const oldestFirst = (a: TmdbSearchItem, b: TmdbSearchItem) =>
+			(a.release_date ?? "").localeCompare(b.release_date ?? "");
+
+		// TMDB splits some series in two: The Hunger Games: Sunrise on the
+		// Reaping sits in a "New Trilogy Collection" with only Ballad of
+		// Songbirds & Snakes, and the four films that made the series are in
+		// another. Collections named for the same series are read as one.
+		const seriesName = seriesBase(collection?.name ?? film.belongs_to_collection?.name);
+		const siblings =
+			seriesName && film.belongs_to_collection
+				? (
+						await get<{ results?: { id: number; name?: string }[] }>(
+							`${API}/search/collection?query=${encodeURIComponent(seriesName)}`,
+							DAY_MS,
+						)
+					).results ?? []
+				: [];
+		const related = siblings
+			.filter(
+				(one) =>
+					one.id !== film.belongs_to_collection?.id &&
+					seriesBase(one.name)?.toLowerCase() === seriesName?.toLowerCase(),
+			)
+			.slice(0, MAX_SIBLING_COLLECTIONS);
+		const byId = new Map<number, TmdbSearchItem>();
+		for (const one of collection?.parts ?? []) byId.set(one.id, one);
+		for (const one of related) {
+			const other = await get<{ parts?: TmdbSearchItem[] }>(`${API}/collection/${one.id}`, DAY_MS);
+			for (const part of other.parts ?? []) byId.set(part.id, part);
+		}
+		const parts = [...byId.values()].filter(earlier).sort(oldestFirst);
+
+		// By id, so a film two of its directors made together counts once.
+		const directed = new Map<number, TmdbSearchItem>();
+		for (const one of directors) {
+			const credits = await get<{ crew?: (TmdbSearchItem & { job?: string })[] }>(
+				`${API}/person/${one.id}/movie_credits`,
+				DAY_MS,
+			);
+			for (const made of credits.crew ?? []) {
+				if (made.job === "Director" && earlier(made)) directed.set(made.id, made);
+			}
+		}
+
+		// Its genres, so it is measured against what they get; its date, so a
+		// director's recent films count for more than their first.
+		const earlierFilm = (one: TmdbSearchItem): EarlierFilm => ({
+			title: one.title ?? one.name ?? "Untitled",
+			rating: one.vote_average ?? 0,
+			genres: genreNames(one.genre_ids),
+			...(one.release_date ? { released: one.release_date } : {}),
+			...(one.vote_count ? { votes: one.vote_count } : {}),
+		});
+
+		return {
+			genres: (film.genres ?? []).map((one) => one.name),
+			...(parts.length > 0
+				? {
+						series: {
+							name: collection?.name ?? film.belongs_to_collection?.name ?? "Series",
+							films: parts.map(earlierFilm),
+						},
+					}
+				: {}),
+			...(directed.size > 0
+				? {
+						directors: {
+							names: directors.map((one) => one.name),
+							films: [...directed.values()].sort(oldestFirst).map(earlierFilm),
+						},
+					}
+				: {}),
+			...(film.budget ? { budget: film.budget } : {}),
 		};
 	}
 

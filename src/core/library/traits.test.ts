@@ -16,8 +16,8 @@ describe("traitKey", () => {
 		const [a] = traitsOfEntry(entry({ tags: ["Sci-Fi"] }));
 		const [b] = traitsOfEntry(entry({ tags: ["sci-fi "] }));
 		expect(a?.key).toBe(b?.key);
-		// The fold is for matching; what a person is shown keeps its spelling.
-		expect(a?.label).toBe("Sci-Fi");
+		// A known genre is shown in Scout's own spelling.
+		expect(a?.label).toBe("Science fiction");
 	});
 
 	it("reads a key back into the two halves it was made of", () => {

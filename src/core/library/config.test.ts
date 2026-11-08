@@ -1,13 +1,44 @@
 import { describe, expect, it } from "vitest";
 import {
 	defaultLibraryConfig,
+	layoutOf,
 	normalizeLibraryConfig,
 	ratingFraction,
 	ratingScaleFor,
 	statusTone,
+	statusesFor,
 } from "./config";
 
 const config = defaultLibraryConfig();
+
+describe("albums in an older config", () => {
+	it("adds the two new words to a config saved before albums", () => {
+		const config = normalizeLibraryConfig({
+			inProgressStatuses: "Watching, Reading",
+			finishedStatuses: "Watched",
+		});
+		expect(statusTone(config, "Listening")).toBe("active");
+		expect(statusTone(config, "Listened")).toBe("done");
+		expect(config.inProgressStatuses).toBe("Watching, Reading, Listening");
+	});
+
+	it("does not add a word that is already there", () => {
+		const config = normalizeLibraryConfig({
+			finishedStatuses: "listened, Watched",
+		});
+		expect(config.finishedStatuses).toBe("listened, Watched");
+	});
+
+	it("gives albums their own statuses", () => {
+		expect(statusesFor(defaultLibraryConfig(), "album")).toEqual([
+			"To listen",
+			"Listening",
+			"Listened",
+			"On hold",
+			"Dropped",
+		]);
+	});
+});
 
 describe("statusTone", () => {
 	it("sorts the default vocabulary into its four groups", () => {
@@ -81,5 +112,21 @@ describe("normalizeLibraryConfig", () => {
 			ratingScales: { movie: 10, book: 0, game: NaN },
 		});
 		expect(out.ratingScales).toEqual({ movie: 10 });
+	});
+});
+
+describe("stored layout and order", () => {
+	it("reads the board under its old name, and drops what it does not know", () => {
+		expect(layoutOf("shelves")).toBe("board");
+		expect(layoutOf("table")).toBe("table");
+		expect(layoutOf("carousel")).toBeUndefined();
+		const read = normalizeLibraryConfig({
+			layout: "shelves" as never,
+			sortBy: "nonsense" as never,
+			groupBy: "tone",
+		});
+		expect(read.layout).toBe("board");
+		expect(read.sortBy).toBe(defaultLibraryConfig().sortBy);
+		expect(read.groupBy).toBe("tone");
 	});
 });

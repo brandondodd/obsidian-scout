@@ -25,6 +25,8 @@ import {
 	hasLegacyCache,
 	mergeCaches,
 	normalizeCache,
+	type ScoreLog,
+	type ScoreRecord,
 	type ScoutCache,
 } from "./cacheFile";
 import type { SettingsScope } from "./types";
@@ -203,6 +205,9 @@ export function migrate(raw: Record<string, unknown> | null): ScoutData {
 
 /* ------------------------------------------------------------------- store */
 
+/** Sources that stay off until you turn them on under Sources. */
+const OPT_IN_PROVIDERS: readonly string[] = ["musicbrainz"];
+
 export class ScoutSettings {
 	private data: ScoutData = emptyData();
 	private cache: ScoutCache = emptyCache();
@@ -210,6 +215,7 @@ export class ScoutSettings {
 	private readonly saves: DebouncedSave;
 	private readonly cacheSaves: DebouncedSave;
 	private readonly listeners = new Set<() => void>();
+	private readonly scoreListeners = new Set<(key: string) => void>();
 
 	constructor(private readonly plugin: Plugin) {
 		this.cacheFile = new CacheFile(plugin);
@@ -341,6 +347,47 @@ export class ScoutSettings {
 	setCheckLog(log: Record<string, string>): void {
 		this.cache.checked = log;
 		this.scheduleCacheSave();
+	}
+
+	/* ------------------------------------------------------- Scout scores */
+
+	scores(): Readonly<ScoreLog> {
+		return this.cache.scores;
+	}
+
+	/**
+	 * Files one title's blended score, or clears it.
+	 *
+	 * Tells only the score listeners — the library index, which updates that one
+	 * entry — rather than every settings listener, which would rebuild the lot.
+	 */
+	setScore(key: string, record: ScoreRecord | null): void {
+		const before = this.cache.scores[key];
+		if (
+			record &&
+			before &&
+			before.full === record.full &&
+			before.v === record.v &&
+			sameOutlook(before.outlook, record.outlook) &&
+			JSON.stringify(before.readings) === JSON.stringify(record.readings)
+		) {
+			// Same verdict: only the date moved, which nobody is shown. Opening
+			// a film not out yet files its outlook again; telling the library
+			// about it rebuilt every shelf for a number that had not changed.
+			this.cache.scores[key] = record;
+			this.scheduleCacheSave();
+			return;
+		}
+		if (record) this.cache.scores[key] = record;
+		else delete this.cache.scores[key];
+		this.scheduleCacheSave();
+		for (const listener of this.scoreListeners) listener(key);
+	}
+
+	/** Fires with the title's key whenever its score changes. */
+	onScore(listener: (key: string) => void): () => void {
+		this.scoreListeners.add(listener);
+		return () => this.scoreListeners.delete(listener);
 	}
 
 	/* ------------------------------------------------ suggestion feedback */
@@ -567,12 +614,28 @@ export class ScoutSettings {
 		};
 	}
 
-	/** Providers default to enabled unless explicitly turned off. */
+	/**
+	 * Providers default to enabled unless explicitly turned off, apart from any
+	 * added since release: those would otherwise start receiving your searches
+	 * the day you updated, without having been asked.
+	 */
 	isProviderEnabled(providerId: string): boolean {
-		return this.scopeFor(providerId).get("enabled", true);
+		return this.scopeFor(providerId).get(
+			"enabled",
+			!OPT_IN_PROVIDERS.includes(providerId),
+		);
 	}
 
 	raw(): Readonly<ScoutData> {
 		return this.data;
 	}
+}
+
+/** Two filed outlooks that say the same, whenever each was asked. */
+function sameOutlook(
+	a: ScoreRecord["outlook"] | undefined,
+	b: ScoreRecord["outlook"] | undefined,
+): boolean {
+	if (!a || !b) return a === b;
+	return JSON.stringify({ ...a, at: 0 }) === JSON.stringify({ ...b, at: 0 });
 }

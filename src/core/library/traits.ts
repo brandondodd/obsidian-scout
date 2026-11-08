@@ -1,3 +1,4 @@
+import { canonicalGenres } from "../genres/genres";
 import { sourceKey, type MediaItem, type MediaKind } from "../types";
 // Types only: `enrich.ts` reaches back here through `recommend.ts`, and a
 // value import would make that a cycle at run time rather than only on paper.
@@ -245,7 +246,14 @@ function ownTraits(entry: LibraryEntry): Trait[] {
 	if (cached) return cached;
 
 	const bag = new TraitBag();
-	for (const tag of entry.tags) bag.add("genre", tag);
+	// In Scout's genre vocabulary, so a note written from TMDB's "Sci-Fi &
+	// Fantasy" and a suggestion carrying "Science fiction" share a trait.
+	// Unknown words are kept here, unlike in the library's genre filter: a
+	// taste can only learn from what it is given, and a word nobody else uses
+	// costs nothing but its own weight.
+	for (const tag of canonicalGenres(entry.kind, entry.tags, { keepUnknown: "any" })) {
+		bag.add("genre", tag);
+	}
 	// The names a credit property attributed the thing to. Held apart from the
 	// rest because a signature is worth more than an appearance.
 	for (const name of entry.authored) bag.add("director", name);
@@ -303,7 +311,9 @@ function asNames(value: unknown): string[] {
  */
 export function traitsOfItem(item: MediaItem): Trait[] {
 	const bag = new TraitBag();
-	for (const tag of item.tags) bag.add("genre", tag);
+	for (const tag of canonicalGenres(item.ref.kind, item.tags, { keepUnknown: "any" })) {
+		bag.add("genre", tag);
+	}
 	for (const name of asNames(item.extra.directors)) bag.add("director", name);
 	let counted = 0;
 	for (const name of item.people) {
@@ -356,9 +366,19 @@ export function traitsOfRecord(record: FeedbackRecord): Trait[] {
 	for (const key of record.traits ?? []) {
 		const parsed = parseTrait(key);
 		if (!parsed || !parsed.value) continue;
+		// A vote cast before the vocabulary existed recorded the source's
+		// genre names; read them as Scout's so they still meet the library.
+		if (parsed.ns === "genre") {
+			for (const label of canonicalGenres(record.kind, [parsed.value], { keepUnknown: "any" })) {
+				bag.add("genre", label);
+			}
+			continue;
+		}
 		bag.take({ key, label: parsed.value });
 	}
-	for (const tag of record.tags) bag.add("genre", tag);
+	for (const tag of canonicalGenres(record.kind, record.tags, { keepUnknown: "any" })) {
+		bag.add("genre", tag);
+	}
 	for (const name of record.people.slice(0, PEOPLE_CAP)) bag.add("person", name);
 	return bag.out;
 }

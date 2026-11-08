@@ -364,7 +364,7 @@ describe("scoreSuggestion", () => {
 			NOW,
 		);
 		expect(verdict.reasons.find((one) => one.kind === "genre")?.label).toBe(
-			"Science Fiction",
+			"Science fiction",
 		);
 		expect(verdict.reasons.find((one) => one.kind === "seed")?.label).toBe(
 			"Because you liked Dune",

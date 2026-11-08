@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { oneDecimal } from "../../core/format";
 import type { RatingIcon } from "../../core/library/config";
 
 /**
@@ -163,7 +164,7 @@ function ScoreField({
 	step: number;
 	onCommit: (value: number | null) => void;
 }): React.ReactElement {
-	const shown = value === undefined ? "" : String(value);
+	const shown = value === undefined ? "" : oneDecimal(value);
 	const [draft, setDraft] = useState<string | null>(null);
 	const fine = typedStep(step);
 
@@ -188,7 +189,7 @@ function ScoreField({
 			max={scale}
 			step={fine}
 			value={draft ?? shown}
-			placeholder="–"
+			placeholder="—"
 			aria-label={`Rating out of ${scale}`}
 			onChange={(e) => setDraft(e.target.value)}
 			onBlur={commit}
@@ -390,7 +391,5 @@ export default function Rating({
 	);
 }
 
-/** Drops a trailing ".0" so "4" does not read as "4.0". */
-export function formatRating(value: number): string {
-	return Number.isInteger(value) ? String(value) : value.toFixed(1);
-}
+/** Always one decimal place: a score of eight is 8.0, here and everywhere. */
+export const formatRating = oneDecimal;

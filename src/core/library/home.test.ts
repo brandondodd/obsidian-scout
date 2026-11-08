@@ -67,7 +67,7 @@ describe("buildHome", () => {
 		]);
 		expect(result.upNext).toHaveLength(0);
 		expect(result.upcoming).toHaveLength(1);
-		expect(result.upcoming[0]?.when).toBe("Out in 8 months");
+		expect(result.upcoming[0]?.when).toBe("8 months");
 	});
 
 	it("leaves out something already released", () => {

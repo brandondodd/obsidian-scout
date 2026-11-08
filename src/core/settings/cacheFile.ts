@@ -1,6 +1,8 @@
 import { normalizePath, type Plugin } from "obsidian";
 import { normalizeEnrichment, type EnrichmentCache } from "../library/enrich";
 import { normalizeShown, type ShownLog } from "../library/feedback";
+import type { EarlierFilm, Outlook } from "../hype";
+import type { Reading } from "../scout-score";
 
 /**
  * Scout's rebuildable working state, kept in `cache.json` beside `data.json`.
@@ -22,13 +24,136 @@ export interface ScoutCache {
 	enrichment: EnrichmentCache;
 	/** How many times the plugin has loaded; seeds each session's suggestions. */
 	rotation: number;
+	/**
+	 * Scout's blended score for each title, keyed `providerId:kind:id`.
+	 *
+	 * A note keeps only its own source's score, and the blend needs Rotten
+	 * Tomatoes, IMDb, and Metacritic as well, so the library reads it from here.
+	 */
+	scores: ScoreLog;
+}
+
+export interface ScoreRecord {
+	/**
+	 * What the blend is made from, not the blend: the blend is worked out when
+	 * shown, so a better blend reaches every title the moment it ships. Empty
+	 * when nothing beyond the note's own score was found.
+	 */
+	readings: Reading[];
+	/** Epoch ms of the reading; 0 when only `outlook` has been filed. */
+	at: number;
+	/**
+	 * What was known of a film not out yet when `at` says: what its hype is
+	 * worked out from. Kept apart from the readings, since it is not a score.
+	 */
+	outlook?: Outlook & { at: number };
+	/** MDBList answered, so the blend saw more than the source's own score. */
+	full?: true;
+	/**
+	 * Which sources were being read when it was filed — see `SCORE_VERSION`.
+	 * Older records are asked about again first, and kept until they are.
+	 */
+	v?: number;
+}
+
+export type ScoreLog = Record<string, ScoreRecord>;
+
+function normalizeScores(raw: unknown): ScoreLog {
+	const out: ScoreLog = {};
+	if (!raw || typeof raw !== "object") return out;
+	for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+		const one = value as Partial<ScoreRecord> | null;
+		// Records from builds that kept only the finished number have no
+		// readings; dropped, they are simply asked about again.
+		if (!one || !Array.isArray(one.readings) || typeof one.at !== "number") continue;
+		const readings = one.readings.flatMap((raw: unknown): Reading[] => {
+			const r = raw as Partial<Reading> | null;
+			if (!r || typeof r.source !== "string") return [];
+			if (typeof r.value !== "number" || !Number.isFinite(r.value)) return [];
+			const votes =
+				typeof r.votes === "number" && Number.isFinite(r.votes) ? { votes: r.votes } : {};
+			return [{ source: r.source, value: r.value, ...votes }];
+		});
+		out[key] = {
+			readings,
+			at: one.at,
+			...(one.full ? { full: true } : {}),
+			...(typeof one.v === "number" ? { v: one.v } : {}),
+			...outlookOf(one.outlook),
+		};
+	}
+	return out;
+}
+
+const isRating = (value: unknown): value is number =>
+	typeof value === "number" && Number.isFinite(value) && value > 0 && value <= 10;
+const strings = (value: unknown): string[] =>
+	Array.isArray(value) ? value.filter((one): one is string => typeof one === "string") : [];
+
+/** Earlier films, keeping only those with a title and a rating. */
+function earlierFilms(raw: unknown): EarlierFilm[] {
+	if (!Array.isArray(raw)) return [];
+	return raw.flatMap((film: unknown) => {
+		const f = film as {
+			title?: unknown;
+			rating?: unknown;
+			genres?: unknown;
+			released?: unknown;
+			votes?: unknown;
+		} | null;
+		if (!f || typeof f.title !== "string" || !isRating(f.rating)) return [];
+		return [
+			{
+				title: f.title,
+				rating: f.rating,
+				...(Array.isArray(f.genres) ? { genres: strings(f.genres) } : {}),
+				...(typeof f.released === "string" ? { released: f.released } : {}),
+				...(typeof f.votes === "number" && f.votes > 0 ? { votes: f.votes } : {}),
+			},
+		];
+	});
+}
+
+/** A filed outlook, rebuilt from only the parts that are what they say they are. */
+function outlookOf(raw: unknown): { outlook?: Outlook & { at: number } } {
+	const one = raw as Partial<Record<keyof Outlook | "at", unknown>> | null | undefined;
+	if (!one || typeof one.at !== "number") return {};
+	const series = one.series as { name?: unknown; films?: unknown } | undefined;
+	const films = earlierFilms(series?.films);
+	const directors = one.directors as
+		| { names?: unknown; films?: unknown; ratings?: unknown }
+		| undefined;
+	// Older builds kept only the directors' ratings, with no genres or dates to
+	// weigh them by: read as films, and filed as long ago so they are asked again.
+	const bare = Array.isArray(directors?.ratings) ? directors.ratings.filter(isRating) : [];
+	const directed: EarlierFilm[] =
+		bare.length > 0
+			? bare.map((rating) => ({ title: "", rating }))
+			: earlierFilms(directors?.films);
+	// Filed before votes were kept: asked again, so a settled film is read as one.
+	const voteless = [...films, ...directed].some((film) => film.votes === undefined);
+	return {
+		outlook: {
+			at: bare.length > 0 || voteless ? 0 : one.at,
+			genres: strings(one.genres),
+			...(typeof series?.name === "string" && films.length > 0
+				? { series: { name: series.name, films } }
+				: {}),
+			...(directed.length > 0
+				? { directors: { names: strings(directors?.names), films: directed } }
+				: {}),
+			...(typeof one.budget === "number" && Number.isFinite(one.budget) && one.budget > 0
+				? { budget: one.budget }
+				: {}),
+		},
+	};
 }
 
 /** Keys older builds kept in `data.json`. */
 export const CACHE_KEYS = ["checked", "shown", "enrichment", "rotation"] as const;
 
 export function emptyCache(): ScoutCache {
-	return { checked: {}, shown: {}, enrichment: {}, rotation: 0 };
+	return { checked: {}, shown: {}, enrichment: {}, rotation: 0, scores: {} };
 }
 
 /** Reads a stored blob defensively — it is hand-editable. */
@@ -50,6 +175,7 @@ export function normalizeCache(raw: unknown): ScoutCache {
 		shown: normalizeShown(at.shown),
 		enrichment: normalizeEnrichment(at.enrichment),
 		rotation,
+		scores: normalizeScores(at.scores),
 	};
 }
 
@@ -63,6 +189,7 @@ export function mergeCaches(file: ScoutCache, legacy: ScoutCache): ScoutCache {
 		shown: { ...legacy.shown, ...file.shown },
 		enrichment: { ...legacy.enrichment, ...file.enrichment },
 		rotation: Math.max(file.rotation, legacy.rotation),
+		scores: { ...legacy.scores, ...file.scores },
 	};
 }
 

@@ -62,6 +62,7 @@ export const KIND_ICONS: Record<MediaKind, string> = {
 	game: "gamepad-2",
 	anime: "sparkles",
 	manga: "book-open",
+	album: "music",
 	link: "link",
 };
 
@@ -203,8 +204,11 @@ export function useRenderWindow(
 					}
 				},
 				// Well before the bottom, so the next page is there by the time
-				// the scroll reaches it.
-				{ rootMargin: "800px 0px" },
+				// the scroll reaches it. Measured against the pane that scrolls:
+				// against the window, the margin reaches past the pane's edge,
+				// where its overflow already clips the sentinel out of view, so
+				// the next page waited for the bottom and drew in a half row.
+				{ root: scroller(el), rootMargin: "800px 0px" },
 			);
 			io.observe(el);
 			observer.current = io;
@@ -213,6 +217,16 @@ export function useRenderWindow(
 	);
 
 	return [limit, sentinel];
+}
+
+/** The nearest ancestor that scrolls, or null for the window. */
+function scroller(el: HTMLElement): HTMLElement | null {
+	const view = el.ownerDocument.defaultView;
+	for (let at = el.parentElement; at; at = at.parentElement) {
+		const overflow = view?.getComputedStyle(at).overflowY;
+		if (overflow === "auto" || overflow === "scroll") return at;
+	}
+	return null;
 }
 
 /** Bumps a counter whenever settings change, to re-read config in a render. */
@@ -251,9 +265,11 @@ export function useProviderData<T>(
 	load: ((signal: AbortSignal) => Promise<T>) | null,
 	key: string,
 ): Async<T> {
+	// Loading from the first render when there is something to load, so a
+	// placeholder shows at once rather than after an empty frame.
 	const [state, setState] = useState<Async<T>>({
 		data: null,
-		loading: false,
+		loading: load !== null,
 		error: null,
 	});
 	const latest = useRef(load);

@@ -1,13 +1,16 @@
-import { MEDIA_KIND_LABELS, type MediaKind } from "../types";
+import type { MediaKind } from "../types";
 import {
 	ratingFraction,
 	splitList,
 	statusesFor,
 	type LibraryConfig,
-	type LibraryGroupBy,
 	type LibrarySort,
 } from "./config";
+import { exactScoutOrHypeOfEntry } from "../hype";
 import type { LibraryEntry } from "./entry";
+import { entryGenres } from "../genres/genres";
+import { queryRule, type LibraryQuery } from "./query";
+import { matchesRule, ruleIsEmpty } from "./rules";
 
 /**
  * Filtering, sorting, and grouping the library.
@@ -16,130 +19,66 @@ import type { LibraryEntry } from "./entry";
  * every keystroke and the behaviour can be tested without a vault.
  */
 
-export interface LibraryQuery {
-	text: string;
-	/** Empty means every kind. */
-	kinds: MediaKind[];
-	/** Empty means every status, matched case-insensitively. */
-	statuses: string[];
-	/** An entry must carry all of these. */
-	tags: string[];
-	/** An entry must belong to all of these collections, by name. */
-	collections: string[];
-	favoritesOnly: boolean;
-	/**
-	 * Expressed on the default scale, and compared proportionally — asking for
-	 * 4 out of 5 also keeps a film rated 8 out of 10. 0 disables the filter;
-	 * unrated entries never pass a non-zero minimum.
-	 */
-	minRating: number;
-	sortBy: LibrarySort;
-	groupBy: LibraryGroupBy;
-}
-
-export function emptyQuery(config: LibraryConfig): LibraryQuery {
-	return {
-		text: "",
-		kinds: [],
-		statuses: [],
-		tags: [],
-		collections: [],
-		favoritesOnly: false,
-		minRating: 0,
-		sortBy: config.sortBy,
-		groupBy: config.groupBy,
-	};
-}
+export { emptyQuery, type LibraryQuery } from "./query";
 
 const lower = (value: string) => value.toLowerCase();
+export { groupEntries, type LibraryGroup } from "./group";
 
 /**
- * Lowercased forms, worked out once per entry and kept for as long as the entry
- * itself lives.
+ * What the search box looks through, lowercased once per entry and kept for as
+ * long as the entry itself lives.
  *
- * The library re-filters on every keystroke, and doing this inside the loop
+ * The library re-filters on every keystroke, and building this inside the loop
  * meant lowercasing and joining every title, genre and name in the vault sixty
  * times a second. A `WeakMap` because the key is the entry object: a re-parsed
- * note is a new object with no cache and the old one is collected along with
- * its strings, so nothing here can go stale or accumulate.
+ * note is a new object with no cache, so nothing here can go stale.
  */
-interface EntryText {
-	haystack: string;
-	tags: string[];
-	collections: string[];
-	status: string;
-}
+const haystacks = new WeakMap<LibraryEntry, string>();
 
-const textCache = new WeakMap<LibraryEntry, EntryText>();
-
-function textOf(entry: LibraryEntry): EntryText {
-	const found = textCache.get(entry);
-	if (found) return found;
-	const built: EntryText = {
-		haystack: [
-			entry.title,
-			entry.basename,
-			entry.status ?? "",
-			...entry.tags,
-			...entry.people,
-		]
-			.join(" ")
-			.toLowerCase(),
-		tags: entry.tags.map(lower),
-		collections: entry.collections.map(lower),
-		status: entry.status ? lower(entry.status) : "",
-	};
-	textCache.set(entry, built);
+function haystackOf(entry: LibraryEntry): string {
+	const found = haystacks.get(entry);
+	if (found !== undefined) return found;
+	const built = [
+		entry.title,
+		entry.basename,
+		entry.status ?? "",
+		// Scout's names as well as the source's, so "sci-fi" and "science
+		// fiction" both find a film whichever its note says.
+		...entryGenres(entry),
+		...entry.tags,
+		...entry.people,
+	]
+		.join(" ")
+		.toLowerCase();
+	haystacks.set(entry, built);
 	return built;
 }
 
+/**
+ * The entries the toolbar keeps.
+ *
+ * The filters run as a rule — the same rule "New view" saves — so the toolbar
+ * and a saved view can never disagree about what a filter means. The search
+ * box is the one thing a rule cannot say, and is matched here: every word has
+ * to appear somewhere, so "nolan 2010" narrows rather than widens.
+ */
 export function filterEntries(
 	entries: readonly LibraryEntry[],
 	query: LibraryQuery,
 	config: LibraryConfig,
+	now: Date = new Date(),
 ): LibraryEntry[] {
-	const kinds = query.kinds.length > 0 ? new Set(query.kinds) : null;
-	const statuses =
-		query.statuses.length > 0 ? new Set(query.statuses.map(lower)) : null;
-	const tags = query.tags.map(lower);
-	const collections = (query.collections ?? []).map(lower);
-	const minFraction =
-		config.ratingScale > 0 ? query.minRating / config.ratingScale : 0;
-	// Every word must appear somewhere, so "nolan 2010" narrows rather than widens.
+	const rule = queryRule(query);
+	const ruled = !ruleIsEmpty(rule);
 	const words = query.text.trim().toLowerCase().split(/\s+/).filter(Boolean);
+	if (!ruled && words.length === 0) return [...entries];
 
 	const out: LibraryEntry[] = [];
 	for (const entry of entries) {
-		if (kinds && !kinds.has(entry.kind)) continue;
-		if (query.favoritesOnly && !entry.favorite) continue;
-		if (query.minRating > 0) {
-			const fraction = ratingFraction(config, entry.kind, entry.rating);
-			// A hair of tolerance, so 4/5 is not excluded from "4+" by 1e-16.
-			if (fraction === undefined || fraction < minFraction - 1e-9) continue;
-		}
-		if (
-			!statuses &&
-			tags.length === 0 &&
-			collections.length === 0 &&
-			words.length === 0
-		) {
-			out.push(entry);
-			continue;
-		}
-		// Only now is the entry's text worth building, and only once.
-		const text = textOf(entry);
-		if (statuses && !statuses.has(text.status)) continue;
-		if (tags.length > 0 && !tags.every((tag) => text.tags.includes(tag))) {
-			continue;
-		}
-		if (
-			collections.length > 0 &&
-			!collections.every((name) => text.collections.includes(name))
-		) {
-			continue;
-		}
-		if (words.length > 0 && !words.every((w) => text.haystack.includes(w))) {
-			continue;
+		if (ruled && !matchesRule(entry, rule, config, now)) continue;
+		if (words.length > 0) {
+			const text = haystackOf(entry);
+			if (!words.every((word) => text.includes(word))) continue;
 		}
 		out.push(entry);
 	}
@@ -181,15 +120,30 @@ function statusRanks(config: LibraryConfig): (entry: LibraryEntry) => number {
 }
 
 /**
- * The source's score as a fraction, or undefined when it has none.
+ * Scout's score as a fraction, or undefined when the note has none.
  *
+ * A film not out yet sorts by its hype, the number its card shows in the
+ * score's place, so a run of upcoming films is ordered and not alphabetical.
  * Zero is nobody having voted rather than a verdict — the same guard the cards
- * make — so an unreleased film does not sort below everything in the library.
+ * make — so an unreleased film without a hype still sinks to the bottom.
  */
 function sourceFraction(entry: LibraryEntry): number | undefined {
-	const score = entry.sourceRating;
-	if (score === undefined || score <= 0) return undefined;
-	return Math.min(score / 10, 1);
+	const score = exactScoutOrHypeOfEntry(entry);
+	return score === undefined ? undefined : Math.min(score / 10, 1);
+}
+
+/** A date property as a timestamp, or undefined when it is missing or unreadable. */
+export function dateStamp(value: string | undefined): number | undefined {
+	if (!value) return undefined;
+	const parsed = Date.parse(value);
+	return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+/** When something came out, or comes out, as a timestamp. */
+function releaseStamp(entry: LibraryEntry): number | undefined {
+	const exact = dateStamp(entry.releaseDate);
+	if (exact !== undefined) return exact;
+	return entry.year ? Date.UTC(entry.year, 0, 1) : undefined;
 }
 
 function progressRatio(entry: LibraryEntry): number {
@@ -215,7 +169,8 @@ export function sortEntries(
 	 * Falling back to the source's score is what stops a backlog from ordering
 	 * itself alphabetically: most of a library is unrated, and "the highest
 	 * rated thing I have not seen" is the question this sort is usually being
-	 * asked. Source scores are always out of ten, whatever scale the notes use.
+	 * asked. Scout scores are always out of ten, whatever scale the notes use,
+	 * and on one curve, so a film and a book sort fairly against each other.
 	 */
 	const rank = (entry: LibraryEntry, missing: number) =>
 		ratingFraction(config, entry.kind, entry.rating) ??
@@ -256,6 +211,38 @@ export function sortEntries(
 			// rate something old.
 			out.sort((a, b) => b.created - a.created);
 			break;
+		case "added-asc":
+			out.sort((a, b) => a.created - b.created);
+			break;
+		case "recent-asc":
+			// What has sat untouched longest — the forgotten end of the pile.
+			out.sort((a, b) => a.modified - b.modified);
+			break;
+		case "source-desc":
+			out.sort(
+				(a, b) => theirs(b, -1) - theirs(a, -1) || byTitle(a, b),
+			);
+			break;
+		case "source-asc":
+			out.sort((a, b) => theirs(a, 2) - theirs(b, 2) || byTitle(a, b));
+			break;
+		case "finished-desc":
+		case "finished-asc": {
+			// Decorated, because a date has to be parsed and a comparator would
+			// parse each one dozens of times. Unfinished things sink either way.
+			const down = sortBy === "finished-desc";
+			const ranked = out.map((entry) => ({ entry, at: dateStamp(entry.finished) }));
+			ranked.sort((a, b) => {
+				if (a.at === undefined || b.at === undefined) {
+					return (
+						(a.at === undefined ? 1 : 0) - (b.at === undefined ? 1 : 0) ||
+						byTitle(a.entry, b.entry)
+					);
+				}
+				return (down ? b.at - a.at : a.at - b.at) || byTitle(a.entry, b.entry);
+			});
+			return ranked.map((one) => one.entry);
+		}
 		case "rating-desc":
 			out.sort(
 				(a, b) =>
@@ -275,15 +262,23 @@ export function sortEntries(
 			);
 			break;
 		case "year-desc":
-			out.sort((a, b) => (b.year ?? 0) - (a.year ?? 0) || byTitle(a, b));
-			break;
-		case "year-asc":
-			out.sort(
-				(a, b) =>
-					(a.year ?? Number.MAX_SAFE_INTEGER) -
-						(b.year ?? Number.MAX_SAFE_INTEGER) || byTitle(a, b),
-			);
-			break;
+		case "year-asc": {
+			// By release date where the note has one, so "coming soon" runs in
+			// the order things arrive; otherwise by the start of the year.
+			// Decorated, because a date has to be parsed. Undated sinks either way.
+			const down = sortBy === "year-desc";
+			const ranked = out.map((entry) => ({ entry, at: releaseStamp(entry) }));
+			ranked.sort((a, b) => {
+				if (a.at === undefined || b.at === undefined) {
+					return (
+						(a.at === undefined ? 1 : 0) - (b.at === undefined ? 1 : 0) ||
+						byTitle(a.entry, b.entry)
+					);
+				}
+				return (down ? b.at - a.at : a.at - b.at) || byTitle(a.entry, b.entry);
+			});
+			return ranked.map((one) => one.entry);
+		}
 		case "status": {
 			/**
 			 * The one key worth working out in advance: it costs a lowercase and
@@ -307,166 +302,6 @@ export function sortEntries(
 			break;
 	}
 	return out;
-}
-
-/* ----------------------------------------------------------------- grouping */
-
-export interface LibraryGroup {
-	key: string;
-	label: string;
-	entries: LibraryEntry[];
-}
-
-interface GroupKey {
-	key: string;
-	label: string;
-}
-
-/** The reserved key for "this entry has nothing to group by"; always last. */
-const NONE = "~none";
-
-/**
- * Which shelves an entry belongs on.
- *
- * Usually one, but a film with four genres belongs on four of them — which is
- * the whole point of grouping by genre, and why this returns a list.
- */
-function groupKeysOf(
-	entry: LibraryEntry,
-	groupBy: LibraryGroupBy,
-	config: LibraryConfig,
-): GroupKey[] {
-	/** Deduplicated case-insensitively, keeping the casing the note used. */
-	const fromList = (values: string[], empty: string): GroupKey[] => {
-		const seen = new Map<string, GroupKey>();
-		for (const value of values) {
-			const key = lower(value.trim());
-			if (key && !seen.has(key)) seen.set(key, { key, label: value.trim() });
-		}
-		return seen.size > 0
-			? [...seen.values()]
-			: [{ key: NONE, label: empty }];
-	};
-
-	switch (groupBy) {
-		case "kind":
-			return [{ key: entry.kind, label: MEDIA_KIND_LABELS[entry.kind] }];
-		case "status":
-			return entry.status
-				? [{ key: lower(entry.status), label: entry.status }]
-				: [{ key: NONE, label: "No status" }];
-		case "rating": {
-			const fraction = ratingFraction(config, entry.kind, entry.rating);
-			if (fraction === undefined) {
-				return [{ key: NONE, label: "Unrated" }];
-			}
-			// Bucketed on the default scale, so mixed scales share shelves.
-			const rounded = Math.floor(fraction * config.ratingScale);
-			return [{ key: `r${rounded}`, label: `${rounded}+` }];
-		}
-		case "year":
-			return entry.year
-				? [{ key: String(entry.year), label: String(entry.year) }]
-				: [{ key: NONE, label: "No year" }];
-		case "decade": {
-			if (!entry.year) return [{ key: NONE, label: "No year" }];
-			const decade = Math.floor(entry.year / 10) * 10;
-			return [{ key: String(decade), label: `${decade}s` }];
-		}
-		case "genre":
-			return fromList(entry.tags, "No genre");
-		case "genre-main": {
-			// The first genre listed, which every source orders by how defining
-			// it is — so a film lands under "Science fiction" rather than under
-			// that and three others.
-			const main = entry.tags.find((tag) => tag.trim().length > 0);
-			return main
-				? [{ key: lower(main.trim()), label: main.trim() }]
-				: [{ key: NONE, label: "No genre" }];
-		}
-		case "person":
-			return fromList(entry.people, "No one credited");
-		case "collection":
-			// The whole point of the shelf metaphor: every collection, side by
-			// side, with everything loose in one pile at the end.
-			return fromList(entry.collections, "In no collection");
-		case "favorite":
-			return [
-				entry.favorite
-					? { key: "fav", label: "Favourites" }
-					: { key: NONE, label: "Everything else" },
-			];
-		default:
-			return [{ key: "all", label: "" }];
-	}
-}
-
-/**
- * Groups without re-sorting: the caller has already ordered the entries, and
- * groups come out in the order their first member appears — except for the
- * "none" bucket, which is always last.
- */
-export function groupEntries(
-	entries: readonly LibraryEntry[],
-	groupBy: LibraryGroupBy,
-	config: LibraryConfig,
-): LibraryGroup[] {
-	if (groupBy === "none") {
-		return [{ key: "all", label: "", entries: [...entries] }];
-	}
-
-	const groups = new Map<string, LibraryGroup>();
-	for (const entry of entries) {
-		for (const { key, label } of groupKeysOf(entry, groupBy, config)) {
-			const group = groups.get(key);
-			if (group) group.entries.push(entry);
-			else groups.set(key, { key, label, entries: [entry] });
-		}
-	}
-
-	const out = [...groups.values()];
-	if (groupBy === "status") {
-		// Follow the configured status order rather than discovery order, so
-		// shelves read "To watch → Watching → Watched" as they do in settings.
-		const order = new Map<string, number>();
-		// One pass per kind present rather than one per entry: the vocabulary is
-		// a property of the kind, and splitting it again for every note in the
-		// library was the same answer several thousand times.
-		const kinds = new Set<MediaKind>();
-		for (const entry of entries) kinds.add(entry.kind);
-		let next = 0;
-		for (const kind of kinds) {
-			for (const status of statusesFor(config, kind)) {
-				const key = lower(status);
-				if (order.has(key)) continue;
-				order.set(key, next++);
-			}
-		}
-		out.sort(
-			(a, b) => (order.get(a.key) ?? 900) - (order.get(b.key) ?? 900),
-		);
-	} else if (groupBy === "year" || groupBy === "decade") {
-		out.sort((a, b) => Number(b.key || 0) - Number(a.key || 0));
-	} else if (groupBy === "rating") {
-		out.sort((a, b) => Number(b.key.slice(1) || -1) - Number(a.key.slice(1) || -1));
-	} else if (
-		groupBy === "genre" ||
-		groupBy === "genre-main" ||
-		groupBy === "person" ||
-		groupBy === "collection"
-	) {
-		// Discovery order means nothing here, and there can be a lot of these:
-		// biggest shelf first, alphabetical to break ties.
-		out.sort(
-			(a, b) =>
-				b.entries.length - a.entries.length ||
-				compareText(a.label, b.label),
-		);
-	}
-
-	const known = out.filter((g) => g.key !== NONE);
-	const none = out.filter((g) => g.key === NONE);
-	return [...known, ...none];
 }
 
 /* -------------------------------------------------------------------- stats */
@@ -523,18 +358,4 @@ export function libraryStats(
 	};
 }
 
-/** Every genre in the set, most common first — populates the tag filter. */
-export function collectTags(entries: readonly LibraryEntry[]): string[] {
-	const counts = new Map<string, { label: string; count: number }>();
-	for (const entry of entries) {
-		for (const tag of entry.tags) {
-			const key = lower(tag);
-			const found = counts.get(key);
-			if (found) found.count++;
-			else counts.set(key, { label: tag, count: 1 });
-		}
-	}
-	return [...counts.values()]
-		.sort((a, b) => b.count - a.count || compareText(a.label, b.label))
-		.map((t) => t.label);
-}
+export { collectTags } from "./facets";

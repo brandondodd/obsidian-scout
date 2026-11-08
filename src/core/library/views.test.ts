@@ -96,6 +96,7 @@ describe("ruleFromQuery", () => {
 			...emptyQuery(config),
 			kinds: ["movie", "book"],
 			tags: ["Crime", "Drama"],
+			genreMatch: "all",
 		});
 		// Two genres, both required, so two conditions on the outer "all".
 		expect(rule.conditions.filter((c) => c.field === "genre")).toHaveLength(2);

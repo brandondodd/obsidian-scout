@@ -65,3 +65,17 @@ export function tagSafeList(names: readonly string[]): string[] {
 	}
 	return out;
 }
+
+/**
+ * A genre as people read it, for display.
+ *
+ * A note may hold the tag-safe form, so the source's own wording wins when it
+ * is known. Otherwise "and" between words goes back to the `&` it stood for,
+ * which covers TMDB's "Sci-Fi & Fantasy" and its kin. Other hyphens stay:
+ * "Sci-Fi" is spelled that way, and nothing says which ones were spaces.
+ */
+export function readableTag(tag: string, known: readonly string[] = []): string {
+	const source = known.find((name) => name !== tag && tagSafe(name) === tag);
+	if (source) return source;
+	return tag.replace(/(\p{L})-and-(\p{L})/gu, "$1 & $2");
+}

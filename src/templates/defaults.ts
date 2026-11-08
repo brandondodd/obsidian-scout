@@ -171,7 +171,7 @@ created: {{now}}
 
 ## Resources
 
-- [RAWG page]({{url}})
+- [IGDB page]({{url}})
 `;
 
 const LINK = `---
@@ -223,11 +223,31 @@ created: {{now}}
 
 `;
 
+const ALBUM = `---
+title: {{title}}
+type: album
+status: To listen
+rating:
+source_rating: {{rating}}
+artist: {{artist}}
+genres: {{tags}}
+release_date: {{release_date}}
+cover: {{cover}}
+source: {{provider}}
+scout_id: {{id}}
+created: {{now}}
+---
+
+## Thoughts
+
+`;
+
 const BY_KIND: Partial<Record<MediaKind, string>> = {
 	movie: MOVIE,
 	tv: TV,
 	book: BOOK,
 	game: GAME,
+	album: ALBUM,
 	link: LINK,
 };
 

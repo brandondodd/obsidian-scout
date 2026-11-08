@@ -3,7 +3,8 @@ import type { ScoutContext } from "../../core/context";
 import { cleanGoals } from "../../core/library/config";
 import type { StatsData } from "../../core/library/stats";
 import { MEDIA_KIND_PLURALS, type MediaKind } from "../../core/types";
-import { Meter } from "./Charts";
+import { Meter, kindColor } from "./Charts";
+import { Icon, KIND_ICONS } from "./shared";
 
 /**
  * Yearly goals — "52 books" — shown as progress, and set right here.
@@ -15,10 +16,12 @@ export function Goals({
 	ctx,
 	goals,
 	kinds,
+	now,
 }: {
 	ctx: ScoutContext;
 	goals: StatsData["goals"];
 	kinds: readonly MediaKind[];
+	now: Date;
 }): React.ReactElement | null {
 	const [editing, setEditing] = useState(false);
 	const config = ctx.settings.library();
@@ -34,19 +37,26 @@ export function Goals({
 	if (goals.length === 0 && !editing) {
 		return (
 			<div className="scout-stats-goal-prompt">
-				<button onClick={() => setEditing(true)}>Set a yearly goal</button>
+				<Icon name="target" size={16} />
+				<span>Set a yearly goal and see whether you're on pace.</span>
+				<button className="scout-plain" onClick={() => setEditing(true)}>
+					Set a goal
+				</button>
 			</div>
 		);
 	}
 
 	return (
 		<section className="scout-stats-card">
-			<h3>
-				Goals for {goals[0]?.year ?? new Date().getFullYear()}
-				<button className="scout-stats-edit" onClick={() => setEditing(!editing)}>
+			<header className="scout-stats-card-head">
+				<h3>
+					<Icon name="target" size={15} />
+					Goals for {goals[0]?.year ?? now.getFullYear()}
+				</h3>
+				<button className="scout-plain scout-stats-edit" onClick={() => setEditing(!editing)}>
 					{editing ? "Done" : "Edit"}
 				</button>
-			</h3>
+			</header>
 			{editing ? (
 				<div className="scout-stats-goal-edit">
 					{kinds.map((kind) => (
@@ -66,11 +76,41 @@ export function Goals({
 			) : (
 				<ul className="scout-stats-goals">
 					{goals.map((goal) => {
-						const label = `${goal.done} of ${goal.target} ${MEDIA_KIND_PLURALS[goal.kind].toLowerCase()}`;
+						const plural = MEDIA_KIND_PLURALS[goal.kind].toLowerCase();
+						const label = `${goal.done} of ${goal.target} ${plural}`;
+						const pace = paceFraction(goal.year, now);
+						const behind = pace === null ? 0 : Math.round(goal.target * pace) - goal.done;
+						const status =
+							goal.done >= goal.target
+								? "Goal reached"
+								: pace === null
+									? `${goal.target - goal.done} short`
+									: behind > 0
+										? `${behind} behind pace`
+										: behind < 0
+											? `${-behind} ahead of pace`
+											: "On pace";
 						return (
 							<li key={goal.kind}>
-								<span>{label}</span>
-								<Meter value={goal.done} max={goal.target} label={label} />
+								<div className="scout-stats-goal-line">
+									<span className="scout-stats-goal-kind">
+										<Icon name={KIND_ICONS[goal.kind]} size={14} /> {MEDIA_KIND_PLURALS[goal.kind]}
+									</span>
+									<span>
+										<strong>{goal.done}</strong>
+										<span className="scout-stats-note"> / {goal.target}</span>
+									</span>
+								</div>
+								<Meter
+									value={goal.done}
+									max={goal.target}
+									label={label}
+									color={kindColor(goal.kind)}
+									marker={pace ?? undefined}
+								/>
+								<span className={`scout-stats-note${behind > 0 && goal.done < goal.target ? " is-behind" : ""}`}>
+									{Math.round(Math.min(1, goal.done / goal.target) * 100)}% · {status}
+								</span>
 							</li>
 						);
 					})}
@@ -78,4 +118,12 @@ export function Goals({
 			)}
 		</section>
 	);
+}
+
+/** How far through the goal's year today is, or null for a year that is over or yet to come. */
+function paceFraction(year: number, now: Date): number | null {
+	if (year !== now.getFullYear()) return null;
+	const start = new Date(year, 0, 1).getTime();
+	const end = new Date(year + 1, 0, 1).getTime();
+	return (now.getTime() - start) / (end - start);
 }

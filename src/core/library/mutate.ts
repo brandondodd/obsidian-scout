@@ -1,7 +1,6 @@
 import { Notice, TFile, type App } from "obsidian";
 import type { ScoutSettings } from "../settings/store";
 import {
-	splitList,
 	statusTone,
 	statusWithTone,
 	type CustomField,
@@ -16,6 +15,7 @@ import {
 	type WatchState,
 } from "./episodes";
 import { replayPatch } from "./replay";
+import { statusDates } from "./stamp";
 import { readSection, writeSection } from "./section";
 import { needsTagSafeNames, tagSafeList } from "./tags";
 
@@ -107,31 +107,38 @@ export class LibraryMutator {
 	}
 
 	/**
-	 * Sets the status, and stamps the start/finish dates when the new status
-	 * means "started" or "done" — the bookkeeping nobody remembers to do.
+	 * Sets the status, and fills in the start or finish date when the change
+	 * itself shows when it happened. See `statusDates` for the rule.
 	 */
 	async setStatus(entry: LibraryEntry, status: string | null): Promise<void> {
 		const config = this.settings.library();
-		const fields = config.fields;
-		const patch: Record<string, unknown> = {
-			[fields.status]: status && status.length > 0 ? status : null,
-		};
+		const next = status && status.length > 0 ? status : null;
+		const dates = statusDates(config, entry, next, today());
+		const written = await this.patch(entry, {
+			[config.fields.status]: next,
+			...dates.patch,
+		});
+		if (written && dates.undated) this.offerFinishedToday(entry);
+	}
 
-		if (status && config.autoTimestamps) {
-			const value = lower(status);
-			const started = splitList(config.inProgressStatuses).map(lower);
-			const finished = splitList(config.finishedStatuses).map(lower);
+	/**
+	 * Marked done with no date: often a backlog entry, sometimes something
+	 * finished an hour ago. A quick "Today" button covers the second case
+	 * without guessing a date for the first.
+	 */
+	private offerFinishedToday(entry: LibraryEntry): void {
+		const fragment = document.createDocumentFragment();
+		const text = document.createElement("span");
+		text.textContent = `Marked "${entry.title}" as done. `;
+		const button = document.createElement("button");
+		button.textContent = "Finished today";
+		fragment.append(text, button);
 
-			if (started.includes(value) && !entry.started) {
-				patch[fields.started] = today();
-			}
-			if (finished.includes(value)) {
-				if (!entry.started) patch[fields.started] = today();
-				if (!entry.finished) patch[fields.finished] = today();
-			}
-		}
-
-		await this.patch(entry, patch);
+		const notice = new Notice(fragment, 8000);
+		button.addEventListener("click", () => {
+			notice.hide();
+			void this.setField(entry, "finished", today());
+		});
 	}
 
 	/**
@@ -174,6 +181,7 @@ export class LibraryMutator {
 		// The same bookkeeping the status control does, under the same setting:
 		// nobody who has just ticked off episode one wants to then be told the
 		// show is still on their to-watch shelf.
+		let undated = false;
 		if ((id || state.extra.size > 0) && config.autoTimestamps) {
 			const total = entry.progressTotal;
 			const complete =
@@ -181,20 +189,22 @@ export class LibraryMutator {
 				watched !== undefined &&
 				watched >= total;
 			const tone = statusTone(config, entry.status);
+			const next = complete
+				? statusWithTone(config, entry.kind, "done")
+				: tone === null || tone === "planned"
+					? statusWithTone(config, entry.kind, "active")
+					: undefined;
 
-			if (complete) {
-				const done = statusWithTone(config, entry.kind, "done");
-				if (done) patch[fields.status] = done;
-				if (!entry.started) patch[fields.started] = today();
-				if (!entry.finished) patch[fields.finished] = today();
-			} else if (tone === null || tone === "planned") {
-				const active = statusWithTone(config, entry.kind, "active");
-				if (active) patch[fields.status] = active;
-				if (!entry.started) patch[fields.started] = today();
+			if (next) {
+				patch[fields.status] = next;
+				const dates = statusDates(config, entry, next, today());
+				Object.assign(patch, dates.patch);
+				undated = dates.undated;
 			}
 		}
 
-		await this.patch(entry, patch);
+		const written = await this.patch(entry, patch);
+		if (written && undated) this.offerFinishedToday(entry);
 	}
 
 	/** Your rating and note for one episode. Null clears it. */

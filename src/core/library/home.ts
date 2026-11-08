@@ -1,3 +1,4 @@
+import { entryGenres, entryMainGenres } from "../genres/genres";
 import { MEDIA_KIND_LABELS, type MediaKind } from "../types";
 import {
 	ratingFraction,
@@ -53,7 +54,7 @@ export interface HomeSummary {
 
 export interface HomeUpcoming {
 	entry: LibraryEntry;
-	/** "In 9 days", "Out in March" — already worded. */
+	/** "9 days", "March" — already worded. */
 	when: string;
 }
 
@@ -149,7 +150,7 @@ export function buildHome(
 		planned,
 		(entry) => ({
 			score: scoreCandidate(profile, candidateOf(entry), now).score,
-			tags: entry.tags,
+			tags: entryGenres(entry),
 		}),
 		ROW,
 	);
@@ -260,7 +261,7 @@ function topGenres(
 ): { name: string; count: number }[] {
 	const counts = new Map<string, { name: string; count: number }>();
 	for (const entry of entries) {
-		for (const tag of entry.tags) {
+		for (const tag of entryMainGenres(entry)) {
 			const name = tag.trim();
 			if (!name) continue;
 			const at = counts.get(lower(name)) ?? { name, count: 0 };

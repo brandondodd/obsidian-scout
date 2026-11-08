@@ -1,3 +1,4 @@
+import { entryGenres } from "../genres/genres";
 import { MEDIA_KIND_LABELS, type MediaKind } from "../types";
 import {
 	ratingFraction,
@@ -5,6 +6,7 @@ import {
 	type LibraryConfig,
 	type StatusTone,
 } from "./config";
+import { scoutOfEntry } from "../scout-score";
 import { customValue, type LibraryEntry } from "./entry";
 
 /**
@@ -46,6 +48,7 @@ export type RuleField =
 	| "updated"
 	| "started"
 	| "finished"
+	| "released"
 	| "property";
 
 export type RuleOp =
@@ -122,13 +125,14 @@ export const RULE_FIELDS: Record<
 	collection: { label: "Collection", type: "list" },
 	year: { label: "Year", type: "number" },
 	rating: { label: "Your rating", type: "number" },
-	sourceRating: { label: "Source rating", type: "number" },
+	sourceRating: { label: "Scout score", type: "number" },
 	progress: { label: "Progress", type: "number" },
 	favorite: { label: "Favourite", type: "boolean" },
 	added: { label: "Added", type: "date" },
 	updated: { label: "Last updated", type: "date" },
 	started: { label: "Started on", type: "date" },
 	finished: { label: "Finished on", type: "date" },
+	released: { label: "Released", type: "boolean" },
 	property: { label: "Any property", type: "text" },
 };
 
@@ -181,7 +185,43 @@ export const TONE_LABELS: Record<StatusTone, string> = {
 	dropped: "Dropped",
 };
 
+/**
+ * Both rules, and-ed.
+ *
+ * Flattened into the existing group when that group is already an "all", so
+ * folding the toolbar into a view twice does not build a tower of nested groups
+ * nobody can read back.
+ */
+export function mergeRules(base: RuleGroup, extra: RuleGroup): RuleGroup {
+	if (ruleIsEmpty(extra)) return base;
+	if (ruleIsEmpty(base)) return extra;
+	if (base.match === "all") {
+		return {
+			match: "all",
+			conditions: [...base.conditions, ...extra.conditions],
+			groups: [...base.groups, ...extra.groups],
+		};
+	}
+	return { match: "all", conditions: [], groups: [base, extra] };
+}
+
 /* --------------------------------------------------------------- evaluation */
+
+/**
+ * Out yet, or not — and undefined when nothing says when.
+ *
+ * A day wins over a year. A year on its own counts as out unless it is still
+ * to come, because "2019" with no day is a film that happened.
+ */
+export function isReleased(
+	entry: Pick<LibraryEntry, "releaseDate" | "year">,
+	now: Date,
+): boolean | undefined {
+	const day = entry.releaseDate ? Date.parse(entry.releaseDate) : Number.NaN;
+	if (Number.isFinite(day)) return day <= now.getTime();
+	if (entry.year === undefined) return undefined;
+	return entry.year <= now.getFullYear();
+}
 
 const lower = (value: string) => value.trim().toLowerCase();
 
@@ -239,7 +279,10 @@ function fieldValue(
 		case "tone":
 			return statusTone(config, entry.status) ?? undefined;
 		case "genre":
-			return entry.tags;
+			// Scout's genres, with their main genres, and the words as written —
+			// so "has Fantasy" finds an urban fantasy, and a rule written
+			// against an old source name still matches.
+			return [...entryGenres(entry), ...entry.tags];
 		case "person":
 			return entry.people;
 		case "collection":
@@ -251,9 +294,9 @@ function fieldValue(
 			// least 4" means four fifths, whichever scale the note is on.
 			return ratingFraction(config, entry.kind, entry.rating);
 		case "sourceRating":
-			return entry.sourceRating !== undefined && entry.sourceRating > 0
-				? entry.sourceRating
-				: undefined;
+			// Named for what the note stores; compared on Scout's scale, which is
+			// the number every card and the table show.
+			return scoutOfEntry(entry);
 		case "progress":
 			return entry.progress;
 		case "favorite":
@@ -307,7 +350,14 @@ export function matchesCondition(
 	config: LibraryConfig,
 	now: Date = new Date(),
 ): boolean {
-	const actual = fieldValue(entry, condition, config);
+	const actual =
+		condition.field === "released"
+			? isReleased(entry, now)
+			: fieldValue(entry, condition, config);
+	// Nothing says when, so it is neither out nor coming.
+	if (condition.field === "released" && actual === undefined && opTakesValue(condition.op)) {
+		return false;
+	}
 
 	if (condition.op === "set") return present(actual);
 	if (condition.op === "unset") return !present(actual);

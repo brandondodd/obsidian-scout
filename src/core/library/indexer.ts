@@ -76,6 +76,7 @@ export class LibraryIndex {
 		);
 		// A changed field map or alias list changes what every note parses to.
 		plugin.register(this.settings.onChange(() => this.scheduleRebuild()));
+		plugin.register(this.settings.onScore((key) => this.rescore(key)));
 		plugin.register(() => {
 			if (this.notifyTimer !== null) window.clearTimeout(this.notifyTimer);
 			if (this.rebuildTimer !== null) window.clearTimeout(this.rebuildTimer);
@@ -199,7 +200,36 @@ export class LibraryIndex {
 			modified: file.stat.mtime,
 			frontmatter: cache?.frontmatter as Record<string, unknown> | undefined,
 		};
-		return buildEntry(this.settings.library(), source);
+		const entry = buildEntry(this.settings.library(), source);
+		return entry ? this.withScore(entry) : null;
+	}
+
+	/** The entry with Scout's stored blend attached, when there is one. */
+	private withScore(entry: LibraryEntry): LibraryEntry {
+		const stored = entry.ref ? this.settings.scores()[refKey(entry.ref)] : undefined;
+		const outlook = stored?.outlook;
+		if (stored?.readings === entry.readings && outlook === entry.outlook) return entry;
+		const next = { ...entry };
+		if (stored) next.readings = stored.readings;
+		else delete next.readings;
+		if (outlook !== undefined) next.outlook = outlook;
+		else delete next.outlook;
+		return next;
+	}
+
+	/** A title's stored score changed: re-attach it to whichever notes hold it. */
+	private rescore(key: string): void {
+		if (!this.built) return;
+		let moved = false;
+		for (const [path, entry] of this.entries) {
+			if (!entry.ref || refKey(entry.ref) !== key) continue;
+			const next = this.withScore(entry);
+			if (next !== entry) {
+				this.entries.set(path, next);
+				moved = true;
+			}
+		}
+		if (moved) this.changed();
 	}
 
 	/**

@@ -1,13 +1,14 @@
-import type { LibraryLayout } from "./config";
+import { GROUP_LABELS, layoutOf, SORT_LABELS, type LibraryLayout } from "./config";
 import type { LibraryConfig, LibraryGroupBy, LibrarySort } from "./config";
 import type { LibraryEntry } from "./entry";
-import { sortEntries, type LibraryQuery } from "./filter";
+import { sortEntries } from "./filter";
+import { completeQuery, queryIsNarrowed, queryRule, type LibraryQuery } from "./query";
 import {
 	emptyRule,
+	mergeRules,
 	matchesRule,
 	normalizeRule,
 	ruleIsEmpty,
-	type Condition,
 	type RuleGroup,
 } from "./rules";
 
@@ -70,88 +71,23 @@ export function emptyView(config: LibraryConfig, name = "New view"): SavedView {
 /**
  * What the filter row is saying, as conditions.
  *
- * Every control on the toolbar has a condition that means the same thing, which
- * is what makes one of the two redundant. Translating rather than storing the
- * query keeps the quick way in — filter, then save — without keeping two
- * descriptions of the same set.
- *
- * Several genres become several conditions because the toolbar means "and";
- * several types become a nested "any" group because it means "or".
+ * Every control on the toolbar has a condition that means the same thing —
+ * `queryRule` is that translation, and the library filters with it — so saving
+ * the toolbar as a view keeps exactly what was on screen.
  */
 export function ruleFromQuery(query: LibraryQuery): RuleGroup {
-	const conditions: Condition[] = [];
-	const groups: RuleGroup[] = [];
-
-	const anyOf = (values: string[], make: (value: string) => Condition) => {
-		if (values.length === 0) return;
-		if (values.length === 1) {
-			const only = values[0];
-			if (only !== undefined) conditions.push(make(only));
-			return;
-		}
-		groups.push({ match: "any", conditions: values.map(make), groups: [] });
-	};
-
+	const rule = queryRule(query);
 	const text = query.text.trim();
-	// The toolbar's box searches people and tags as well as the title, which no
-	// single condition can say; the title is the part worth keeping, and it is
-	// visible afterwards rather than baked into a copy nobody can see.
-	if (text) conditions.push({ field: "title", op: "contains", value: text });
-
-	anyOf(query.kinds, (value) => ({ field: "kind", op: "is", value }));
-	anyOf(query.statuses, (value) => ({ field: "status", op: "is", value }));
-	for (const tag of query.tags) {
-		conditions.push({ field: "genre", op: "has", value: tag });
-	}
-	for (const name of query.collections) {
-		conditions.push({ field: "collection", op: "has", value: name });
-	}
-	if (query.favoritesOnly) {
-		conditions.push({ field: "favorite", op: "is", value: "true" });
-	}
-	if (query.minRating > 0) {
-		conditions.push({
-			field: "rating",
-			op: "gte",
-			value: String(query.minRating),
-		});
-	}
-
-	return { match: "all", conditions, groups };
+	// The toolbar's box searches people and genres as well as the title, which
+	// no single condition can say; the title is the part worth keeping, and it
+	// is visible afterwards rather than baked into a copy nobody can see.
+	if (!text) return rule;
+	return { ...rule, conditions: [{ field: "title", op: "contains", value: text }, ...rule.conditions] };
 }
 
-/** Whether the toolbar is narrowing anything, sort and grouping aside. */
-export function queryIsNarrowed(query: LibraryQuery): boolean {
-	return (
-		query.text.trim() !== "" ||
-		query.kinds.length > 0 ||
-		query.statuses.length > 0 ||
-		query.tags.length > 0 ||
-		query.collections.length > 0 ||
-		query.favoritesOnly ||
-		query.minRating > 0
-	);
-}
+export { queryIsNarrowed };
 
-/**
- * Both rules, and-ed.
- *
- * Flattened into the existing group when that group is already an "all", so
- * folding the toolbar into a view twice does not build a tower of nested groups
- * nobody can read back.
- */
-export function mergeRules(base: RuleGroup, extra: RuleGroup): RuleGroup {
-	if (ruleIsEmpty(extra)) return base;
-	if (ruleIsEmpty(base)) return extra;
-	if (base.match === "all") {
-		return {
-			match: "all",
-			conditions: [...base.conditions, ...extra.conditions],
-			groups: [...base.groups, ...extra.groups],
-		};
-	}
-	return { match: "all", conditions: [], groups: [base, extra] };
-}
+export { mergeRules };
 
 /** The view the toolbar is showing right now, ready to be named and kept. */
 export function viewFromQuery(
@@ -188,20 +124,25 @@ function storedRule(stored: Partial<SavedView> & { query?: unknown }): RuleGroup
 			: [];
 	return mergeRules(
 		rule,
-		ruleFromQuery({
-			text: typeof query.text === "string" ? query.text : "",
-			kinds: list(query.kinds) as LibraryQuery["kinds"],
-			statuses: list(query.statuses),
-			tags: list(query.tags),
-			collections: list(query.collections),
-			favoritesOnly: Boolean(query.favoritesOnly),
-			minRating:
-				typeof query.minRating === "number" && Number.isFinite(query.minRating)
-					? query.minRating
-					: 0,
-			sortBy: "recent",
-			groupBy: "none",
-		}),
+		ruleFromQuery(
+			completeQuery(
+				{
+					text: typeof query.text === "string" ? query.text : "",
+					kinds: list(query.kinds) as LibraryQuery["kinds"],
+					statuses: list(query.statuses),
+					tags: list(query.tags),
+					// Genres on the old toolbar all had to hold.
+					genreMatch: "all",
+					collections: list(query.collections),
+					favoritesOnly: Boolean(query.favoritesOnly),
+					minRating:
+						typeof query.minRating === "number" && Number.isFinite(query.minRating)
+							? query.minRating
+							: 0,
+				},
+				{ sortBy: "recent", groupBy: "none" },
+			),
+		),
 	);
 }
 
@@ -220,16 +161,15 @@ export function normalizeViews(raw: unknown, config: LibraryConfig): SavedView[]
 			name,
 			icon: typeof stored.icon === "string" && stored.icon ? stored.icon : "list-filter",
 			rule: storedRule(stored),
-			sortBy: (typeof sortBy === "string" ? sortBy : config.sortBy) as LibrarySort,
-			groupBy: (typeof groupBy === "string"
-				? groupBy
-				: config.groupBy) as LibraryGroupBy,
-			layout:
-				stored.layout === "grid" ||
-				stored.layout === "list" ||
-				stored.layout === "table"
-					? stored.layout
-					: null,
+			sortBy:
+				typeof sortBy === "string" && sortBy in SORT_LABELS
+					? (sortBy as LibrarySort)
+					: config.sortBy,
+			groupBy:
+				typeof groupBy === "string" && groupBy in GROUP_LABELS
+					? (groupBy as LibraryGroupBy)
+					: config.groupBy,
+			layout: layoutOf(stored.layout) ?? null,
 			...(typeof stored.cardSize === "number" && stored.cardSize > 0
 				? { cardSize: stored.cardSize }
 				: {}),

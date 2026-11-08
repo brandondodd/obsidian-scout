@@ -31,6 +31,8 @@ import {
 	type TraitSummary,
 } from "../../core/library/taste";
 import { traitKey } from "../../core/library/traits";
+import { hypeOfItem } from "../../core/hype";
+import { scoutOfItem } from "../../core/scout-score";
 import { MEDIA_KIND_LABELS, type MediaItem } from "../../core/types";
 import { ScoutDetailModal } from "../detailModal";
 import { ScoutImportModal } from "../importModal";
@@ -718,10 +720,19 @@ function SuggestionCard({
 			onOpen={() => new ScoutDetailModal(ctx, { item, reasons }).open()}
 			overlay={
 				<>
-					{item.rating !== undefined && item.rating > 0 && (
-						<span className="scout-home-badge">
-							<Icon name="star" size={10} />
-							{formatRating(item.rating)}
+					{scoutOfItem(item) !== undefined && (
+						<span className="scout-home-badge" title="Scout score, out of 10">
+							<Icon name="compass" size={10} />
+							{formatRating(scoutOfItem(item) ?? 0)}
+						</span>
+					)}
+					{hypeOfItem(item, ctx.settings.scores()) !== undefined && (
+						<span
+							className="scout-home-badge scout-hype"
+							title="Forecast: not out yet, so the Scout score it is likely to settle at"
+						>
+							<Icon name="telescope" size={10} />
+							{formatRating(hypeOfItem(item, ctx.settings.scores()) ?? 0)}
 						</span>
 					)}
 					{/* On the artwork and only under the pointer: eight always-on

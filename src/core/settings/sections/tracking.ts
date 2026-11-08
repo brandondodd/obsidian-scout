@@ -63,7 +63,7 @@ export const trackingSection: SettingsSection = (container, ctx) => {
 		.addSetting(
 			toggle({
 				name: "Stamp dates automatically",
-				desc: "Fill in start and finish dates when a status moves to started or finished.",
+				desc: "Fill in the start date when something moves to in progress, and the finish date when it moves from in progress to finished. Marking something finished straight away leaves the dates blank.",
 				value: config.autoTimestamps,
 				onChange: (v) => settings.setLibrary("autoTimestamps", v),
 			}),

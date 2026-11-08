@@ -1,5 +1,5 @@
 import { Menu } from "obsidian";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import type { ScoutContext } from "../../core/context";
 import {
 	admits,
@@ -17,10 +17,11 @@ import {
 	type CustomField,
 } from "../../core/library/config";
 import { customValue, type LibraryEntry } from "../../core/library/entry";
-import { timesFinished } from "../../core/library/replay";
-import type { MediaKind } from "../../core/types";
+import { longDate } from "../../core/format";
 import { newCollection } from "../collections";
 import { hasEpisodes } from "../episodes";
+import { hasProgressCard } from "./detail/Cards";
+import { Thoughts } from "./detail/Thoughts";
 import Rating from "./Rating";
 import { progressFraction, StatusIcon, statusClass } from "./Status";
 import { Icon } from "./shared";
@@ -36,10 +37,9 @@ import { Icon } from "./shared";
 export interface ManagePanelProps {
 	ctx: ScoutContext;
 	entry: LibraryEntry;
+	/** Closes the dialog, for a link in your thoughts that leads elsewhere. */
+	onClose: () => void;
 }
-
-/** Autosave delay for the free-text areas. Long enough not to fight typing. */
-const SAVE_DELAY = 700;
 
 /** Writes are fire-and-forget: the index change re-renders with the new value. */
 const set = (run: () => Promise<void>): void => void run();
@@ -47,6 +47,7 @@ const set = (run: () => Promise<void>): void => void run();
 export default function ManagePanel({
 	ctx,
 	entry,
+	onClose,
 }: ManagePanelProps): React.ReactElement {
 	const config = ctx.settings.library();
 	const statuses = statusesFor(config, entry.kind);
@@ -63,8 +64,16 @@ export default function ManagePanel({
 	 * hiding a value the note holds would be hiding your own data.
 	 */
 	const tone = statusTone(config, entry.status);
+	/**
+	 * Books, manga, and games count on a card above this panel while they are in
+	 * progress, and a show counts in the header. The row stays for everything
+	 * else, including a book set aside part-way, whose number would otherwise
+	 * have nowhere to be seen.
+	 */
+	const onCard = tone === "active" && hasProgressCard(entry.kind);
 	const showProgress =
-		entry.progress !== undefined || tone === "active" || tone === "paused";
+		!onCard &&
+		(entry.progress !== undefined || tone === "active" || tone === "paused");
 	/**
 	 * A show whose episodes can be listed is counted by ticking them off, not by
 	 * typing a number, so the row loses its stepper and keeps the bar.
@@ -74,9 +83,8 @@ export default function ManagePanel({
 	 * many there are — without a total there is no bar to show instead, and a
 	 * row with neither a control nor a reading is worse than the stepper.
 	 */
-	const guided =
-		entry.progressTotal !== undefined &&
-		hasEpisodes(ctx, entry.ref, entry.kind);
+	const episodic = hasEpisodes(ctx, entry.ref, entry.kind);
+	const guided = entry.progressTotal !== undefined && episodic;
 
 	const scale = ratingScaleFor(config, entry.kind);
 	/**
@@ -87,10 +95,10 @@ export default function ManagePanel({
 	const ratingSlots = scale <= 10 ? scale : 5;
 
 	return (
-		<div className="scout-manage">
-			<div className="scout-manage-row">
-				<span className="scout-manage-label">Your rating</span>
-				<div className="scout-manage-control">
+		<div className="sd-yours" data-sd="yours">
+			<div className="sd-row">
+				<span className="sd-lbl">Your rating</span>
+				<div className="sd-ctl">
 					<Rating
 						value={entry.rating}
 						scale={scale}
@@ -101,7 +109,7 @@ export default function ManagePanel({
 						// afford to be a little larger than the five would be
 						// — the row still comes out shorter than the status
 						// buttons above it.
-						size={ratingSlots > 5 ? 20 : 24}
+						size={ratingSlots > 5 ? 22 : 24}
 						// The panel has room for the field, so it always gets
 						// one: an exact score should never depend on hitting a
 						// quarter of a star.
@@ -114,8 +122,8 @@ export default function ManagePanel({
 			</div>
 
 			{statuses.length > 0 && (
-				<div className="scout-manage-row">
-					<span className="scout-manage-label">Status</span>
+				<div className="sd-row">
+					<span className="sd-lbl">Status</span>
 					<StatusControl
 						ctx={ctx}
 						entry={entry}
@@ -124,39 +132,11 @@ export default function ManagePanel({
 				</div>
 			)}
 
-			{showProgress && (
+			{showProgress && !episodic && (
 				<ProgressRow ctx={ctx} entry={entry} guided={guided} />
 			)}
 
-			<div className="scout-manage-row">
-				<span className="scout-manage-label">Dates</span>
-				<div className="scout-manage-control scout-date-row">
-					<label>
-						<span>Started</span>
-						<DateField
-							value={dateValue(entry.started)}
-							label="Started"
-							onCommit={(value) =>
-								set(() =>
-									ctx.mutator.setField(entry, "started", value),
-								)
-							}
-						/>
-					</label>
-					<label>
-						<span>Finished</span>
-						<DateField
-							value={dateValue(entry.finished)}
-							label="Finished"
-							onCommit={(value) =>
-								set(() =>
-									ctx.mutator.setField(entry, "finished", value),
-								)
-							}
-						/>
-					</label>
-				</div>
-			</div>
+			<DatesRow ctx={ctx} entry={entry} />
 
 			<CollectionRow ctx={ctx} entry={entry} />
 
@@ -169,7 +149,77 @@ export default function ManagePanel({
 				/>
 			))}
 
-			<ThoughtsEditor ctx={ctx} entry={entry} />
+			<Thoughts ctx={ctx} entry={entry} onClose={onClose} />
+		</div>
+	);
+}
+
+/* ------------------------------------------------------------------- dates */
+
+/**
+ * When you started and finished.
+ *
+ * A line of text once there is something to say, and one quiet link when there
+ * is not. Two empty date boxes on every note was a form nobody had asked for.
+ */
+function DatesRow({
+	ctx,
+	entry,
+}: {
+	ctx: ScoutContext;
+	entry: LibraryEntry;
+}): React.ReactElement {
+	const [open, setOpen] = useState(false);
+	const started = dateValue(entry.started);
+	const finished = dateValue(entry.finished);
+	const write = (key: "started" | "finished", value: string | null) =>
+		set(() => ctx.mutator.setField(entry, key, value));
+
+	return (
+		<div className="sd-row">
+			<span className="sd-lbl">Dates</span>
+			{open ? (
+				<div className="sd-ctl sd-dates">
+					<label>
+						Started
+						<DateField
+							value={started}
+							label="Started"
+							onCommit={(value) => write("started", value)}
+						/>
+					</label>
+					<label>
+						Finished
+						<DateField
+							value={finished}
+							label="Finished"
+							onCommit={(value) => write("finished", value)}
+						/>
+					</label>
+				</div>
+			) : started || finished ? (
+				<div className="sd-ctl">
+					{started && (
+						<span>
+							Started <b>{longDate(started)}</b>
+						</span>
+					)}
+					{finished && (
+						<span>
+							Finished <b>{longDate(finished)}</b>
+						</span>
+					)}
+					<button className="sd-linkbtn" onClick={() => setOpen(true)}>
+						<Icon name="pencil" size={13} /> Edit
+					</button>
+				</div>
+			) : (
+				<div className="sd-ctl">
+					<button className="sd-linkbtn" onClick={() => setOpen(true)}>
+						<Icon name="calendar" size={15} /> Add dates
+					</button>
+				</div>
+			)}
 		</div>
 	);
 }
@@ -215,13 +265,13 @@ function CollectionRow({
 	};
 
 	return (
-		<div className="scout-manage-row">
-			<span className="scout-manage-label">Collections</span>
-			<div className="scout-manage-control scout-collection-picks">
+		<div className="sd-row">
+			<span className="sd-lbl">Collections</span>
+			<div className="sd-ctl">
 				{member.map((collection) => (
 					<button
 						key={collection.id}
-						className="scout-collection-pick is-on"
+						className="sd-chip sd-on"
 						aria-pressed
 						title={`${collection.description || collection.name} — click to take it off this shelf`}
 						onClick={() => remove(collection)}
@@ -234,7 +284,7 @@ function CollectionRow({
 				    invent are both here, which is most often what "put this on a
 				    shelf" means the first few times. */}
 				<button
-					className="scout-collection-add"
+					className="sd-chip sd-add"
 					title="Put this in a collection"
 					onClick={(event) => addMenu(ctx, entry, event)}
 				>
@@ -329,7 +379,7 @@ function StatusControl({
 
 	if (options.length > MAX_INLINE_STATUSES) {
 		return (
-			<div className="scout-manage-control scout-status-picker">
+			<div className="sd-ctl scout-status-picker">
 				<StatusIcon
 					config={config}
 					status={current}
@@ -358,7 +408,8 @@ function StatusControl({
 	}
 
 	return (
-		<div className="scout-status-group">
+		<div className="sd-ctl">
+			<div className="sd-seg">
 			{options.map((status) => {
 				const active = isCurrent(status);
 				const foreign = !statuses.some(
@@ -367,9 +418,11 @@ function StatusControl({
 				return (
 					<button
 						key={status}
-						className={`scout-status${statusClass(config, status)}${
-							active ? " is-on" : ""
-						}${foreign ? " is-foreign" : ""}`}
+						className={`${statusClass(config, status).trim()}${
+							active ? " sd-on" : ""
+						}${active && statusTone(config, status) === "done" ? " sd-done" : ""}${
+							foreign ? " is-foreign" : ""
+						}`}
 						aria-pressed={active}
 						title={status}
 						onClick={() =>
@@ -381,111 +434,17 @@ function StatusControl({
 							)
 						}
 					>
-						<StatusIcon
-							config={config}
-							status={status}
-							progress={active ? fraction : undefined}
-						/>
-						<span className="scout-status-label">{status}</span>
+						{status.toLowerCase() === "archived" ? (
+							<Icon name="archive" size={14} />
+						) : (
+							<StatusIcon config={config} status={status} size={14} />
+						)}
+						{status}
 					</button>
 				);
 			})}
+			</div>
 		</div>
-	);
-}
-
-/* ----------------------------------------------------------- second times */
-
-/**
- * What each kind calls going round again.
- *
- * Vocabulary, not decoration: "Watch again" on a book is the sort of thing
- * that makes an app feel like it was written for something else.
- */
-const AGAIN_LABEL: Record<MediaKind, string> = {
-	movie: "Watch again",
-	tv: "Watch again",
-	anime: "Watch again",
-	book: "Read again",
-	manga: "Read again",
-	game: "Play again",
-	link: "Read again",
-};
-
-const TIMES_VERB: Record<MediaKind, string> = {
-	movie: "Watched",
-	tv: "Watched",
-	anime: "Watched",
-	book: "Read",
-	manga: "Read",
-	game: "Played",
-	link: "Read",
-};
-
-/**
- * How many times round you have been.
- *
- * A badge on the poster, which is where every other at-a-glance fact about an
- * item already lives — the status ring on a card, the score on a suggestion.
- * It spent a release in the row of buttons, where a bare `×3` beside "Watch
- * again" and "Delete" read as a control you could press, and a moment in the
- * line of facts under the title, where spelled out it made a five-clause line
- * wrap onto two. On the artwork it can be terse again and say the rest on the
- * tooltip, because a badge is glanced at rather than read.
- */
-export function ReplayCount({
-	entry,
-}: {
-	entry: LibraryEntry;
-}): React.ReactElement | null {
-	const times = timesFinished(entry);
-	if (times < 2) return null;
-
-	const dates = [...entry.history, entry.finished].filter(
-		(date): date is string => Boolean(date),
-	);
-
-	return (
-		<span
-			className="scout-replay-count"
-			aria-label={`${TIMES_VERB[entry.kind]} ${times} times`}
-			title={`${TIMES_VERB[entry.kind]} ${times} times${
-				dates.length > 0 ? ` — finished ${dates.join(", ")}` : ""
-			}`}
-		>
-			<Icon name="repeat" size={11} />×{times}
-		</span>
-	);
-}
-
-/**
- * Starting it again.
- *
- * Only appears once there is something to start again — when you have finished
- * the thing and could go round once more. Everything else in the panel is about
- * the run you are on; this is the one control that ends one and opens the next,
- * which is why it sits with the other actions at the top of the dialog rather
- * than among the fields it rearranges.
- */
-export function ReplayControl({
-	ctx,
-	entry,
-}: {
-	ctx: ScoutContext;
-	entry: LibraryEntry;
-}): React.ReactElement | null {
-	const config = ctx.settings.library();
-	if (statusTone(config, entry.status) !== "done") return null;
-
-	return (
-		<button
-			className="scout-replay-again"
-			title="Files the finish date away and starts a new run from today"
-			onClick={() => set(() => ctx.mutator.replay(entry))}
-		>
-			<Icon name="rotate-ccw" size={13} />
-			{AGAIN_LABEL[entry.kind]}
-		</button>
 	);
 }
 
@@ -511,9 +470,9 @@ function ProgressRow({
 	};
 
 	return (
-		<div className="scout-manage-row">
-			<span className="scout-manage-label">Progress</span>
-			<div className="scout-manage-control scout-progress">
+		<div className="sd-row">
+			<span className="sd-lbl">Progress</span>
+			<div className="sd-ctl scout-progress">
 				{guided ? (
 					// A reading rather than a control. Two ways to set the same
 					// number, one of which knows what episode nine is called and
@@ -654,102 +613,9 @@ function CustomFieldRow({
 	}
 
 	return (
-		<div className="scout-manage-row">
-			<span className="scout-manage-label">{field.label || field.key}</span>
-			<div className="scout-manage-control">{control}</div>
-		</div>
-	);
-}
-
-/* ---------------------------------------------------------------- thoughts */
-
-function ThoughtsEditor({
-	ctx,
-	entry,
-}: {
-	ctx: ScoutContext;
-	entry: LibraryEntry;
-}): React.ReactElement {
-	const heading = ctx.settings.library().thoughtsHeading;
-	const [text, setText] = useState("");
-	const [state, setState] = useState<"loading" | "clean" | "dirty" | "saved">(
-		"loading",
-	);
-	const timer = useRef<number | null>(null);
-	/**
-	 * The entry object is replaced on every index update — including the ones
-	 * this panel's own writes cause — so the load effect keys off the path
-	 * alone and reads the current entry through a ref. Keying off the object
-	 * would reload from disk mid-sentence and discard what was being typed.
-	 */
-	const current = useRef(entry);
-	current.current = entry;
-
-	useEffect(() => {
-		let cancelled = false;
-		setState("loading");
-		void ctx.mutator.readThoughts(current.current).then((value) => {
-			if (cancelled) return;
-			setText(value);
-			setState("clean");
-		});
-		return () => {
-			cancelled = true;
-		};
-	}, [ctx.mutator, entry.path]);
-
-	const save = useCallback(
-		async (value: string) => {
-			await ctx.mutator.writeThoughts(current.current, value);
-			setState("saved");
-		},
-		[ctx.mutator],
-	);
-
-	// Flush a pending edit when the panel goes away, so closing does not lose it.
-	useEffect(
-		() => () => {
-			if (timer.current !== null) window.clearTimeout(timer.current);
-		},
-		[],
-	);
-
-	const onChange = (value: string) => {
-		setText(value);
-		setState("dirty");
-		if (timer.current !== null) window.clearTimeout(timer.current);
-		timer.current = window.setTimeout(() => {
-			timer.current = null;
-			void save(value);
-		}, SAVE_DELAY);
-	};
-
-	return (
-		<div className="scout-thoughts">
-			<div className="scout-thoughts-head">
-				<span className="scout-manage-label">{heading}</span>
-				<span className="scout-thoughts-state">
-					{state === "dirty"
-						? "Saving…"
-						: state === "saved"
-							? "Saved"
-							: ""}
-				</span>
-			</div>
-			<textarea
-				value={text}
-				disabled={state === "loading"}
-				placeholder={`What did you make of it? Saved to the "${heading}" section of the note.`}
-				aria-label={heading}
-				onChange={(e) => onChange(e.target.value)}
-				onBlur={() => {
-					if (timer.current !== null) {
-						window.clearTimeout(timer.current);
-						timer.current = null;
-						void save(text);
-					}
-				}}
-			/>
+		<div className="sd-row">
+			<span className="sd-lbl">{field.label || field.key}</span>
+			<div className="sd-ctl">{control}</div>
 		</div>
 	);
 }

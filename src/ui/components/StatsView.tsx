@@ -1,14 +1,13 @@
 import React, { useMemo, useState } from "react";
 import type { ScoutContext } from "../../core/context";
 import { allStatuses, statusTone } from "../../core/library/config";
-import { buildStats, statsYears, type StatsData, type TraitStat } from "../../core/library/stats";
+import { buildStats, statsYears, type StatsData } from "../../core/library/stats";
 import { ALL_MEDIA_KINDS, MEDIA_KIND_PLURALS, type MediaKind } from "../../core/types";
-import { ScoutDetailModal } from "../detailModal";
 import { openLibrary, type LibraryFocus } from "../libraryView";
-import { BarChart, HeatmapChart, Meter } from "./Charts";
-import { formatRating } from "./Rating";
-import { Icon, useLibraryEntries, useSettingsVersion } from "./shared";
+import { BarChart, HeatmapChart, kindColor } from "./Charts";
+import { Icon, KIND_ICONS, useLibraryEntries, useSettingsVersion } from "./shared";
 import { Goals } from "./StatsGoals";
+import { CardHead, Ratings, Shelves, Traits } from "./StatsSections";
 
 /**
  * The stats page: what you finished, when, how much of your time it took, and
@@ -17,20 +16,14 @@ import { Goals } from "./StatsGoals";
 
 const UNITS = { minutes: "watched", pages: "read", hours: "played" } as const;
 
-function amountText(amount: number, unit: keyof typeof UNITS): string {
+/** A figure as a big number and the word under it: ["38", "hours"]. */
+function amountParts(amount: number, unit: keyof typeof UNITS): [string, string] {
 	if (unit === "minutes") {
 		const hours = amount / 60;
-		return hours >= 48 ? `${Math.round(hours / 24)} days` : `${Math.round(hours)} hours`;
+		if (hours >= 72) return [String(Math.round(hours / 24)), "days"];
+		return [String(Math.round(hours)), Math.round(hours) === 1 ? "hour" : "hours"];
 	}
-	return `${Math.round(amount).toLocaleString()} ${unit}`;
-}
-
-/** A delta as a fraction, in points out of ten, signed. */
-function deltaText(delta: number | null): string {
-	if (delta === null) return "";
-	const points = Math.round(delta * 100) / 10;
-	if (points === 0) return "your average";
-	return `${points > 0 ? "+" : ""}${points.toFixed(1)} vs your average`;
+	return [Math.round(amount).toLocaleString(), unit];
 }
 
 export default function StatsView({ ctx }: { ctx: ScoutContext }): React.ReactElement {
@@ -62,13 +55,32 @@ export default function StatsView({ ctx }: { ctx: ScoutContext }): React.ReactEl
 		void openLibrary(ctx.app, kind ? { kinds: [kind], ...focus } : focus);
 	const doneStatuses = allStatuses(config).filter((s) => statusTone(config, s) === "done");
 	const period = year === null ? "all time" : String(year);
+	const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
 	return (
 		<div className="scout-stats-page">
 			<header className="scout-stats-head">
-				<h2>Stats</h2>
+				<div className="scout-stats-title">
+					<h2>{year === null ? "All time" : year === now.getFullYear() ? `${year} so far` : `${year} in review`}</h2>
+					<span>{kind ? MEDIA_KIND_PLURALS[kind] : "Everything you finished"}</span>
+				</div>
 				<div className="scout-stats-filters">
+					{kinds.length > 1 && (
+						<div className="scout-segment" role="group" aria-label="Type">
+							{[null, ...kinds].map((k) => (
+								<button
+									key={k ?? "all"}
+									className={`scout-plain${kind === k ? " is-on" : ""}`}
+									aria-pressed={kind === k}
+									onClick={() => setKind(k)}
+								>
+									{k ? MEDIA_KIND_PLURALS[k] : "All"}
+								</button>
+							))}
+						</div>
+					)}
 					<select
+						className="dropdown"
 						aria-label="Year"
 						value={year ?? "all"}
 						onChange={(e) => setYear(e.target.value === "all" ? null : Number(e.target.value))}
@@ -80,195 +92,172 @@ export default function StatsView({ ctx }: { ctx: ScoutContext }): React.ReactEl
 							</option>
 						))}
 					</select>
-					<select
-						aria-label="Type"
-						value={kind ?? "all"}
-						onChange={(e) =>
-							setKind(e.target.value === "all" ? null : (e.target.value as MediaKind))
-						}
+					<button
+						className={`scout-stats-icon scout-plain${asTable ? " is-on" : ""}`}
+						aria-pressed={asTable}
+						aria-label="Show as tables"
+						title="Show as tables"
+						onClick={() => setAsTable(!asTable)}
 					>
-						<option value="all">Everything</option>
-						{kinds.map((k) => (
-							<option key={k} value={k}>
-								{MEDIA_KIND_PLURALS[k]}
-							</option>
-						))}
-					</select>
-					<label className="scout-stats-toggle">
-						<input type="checkbox" checked={asTable} onChange={(e) => setAsTable(e.target.checked)} />
-						Show as tables
-					</label>
+						<Icon name="table" />
+					</button>
 				</div>
 			</header>
 
-			<Goals ctx={ctx} goals={stats.goals} kinds={kind ? [kind] : kinds} />
+			<Overview
+				stats={stats}
+				period={period}
+				asTable={asTable}
+				onKind={(k) => void openLibrary(ctx.app, { kinds: [k], statuses: doneStatuses })}
+			/>
 
-			<section className="scout-stats-card">
-				<h3>
-					{stats.finished} finished in {period}
-					{stats.again > 0 && <span className="scout-stats-note"> · {stats.again} again</span>}
-				</h3>
-				<BarChart
-					label={`Finished by type, ${period}`}
-					asTable={asTable}
-					bars={stats.byKind.map(({ kind: k, count }) => ({
-						key: k,
-						label: MEDIA_KIND_PLURALS[k],
-						count,
-					}))}
-					onSelect={(bar) =>
-						void openLibrary(ctx.app, { kinds: [bar.key as MediaKind], statuses: doneStatuses })
-					}
-				/>
-			</section>
+			<Goals ctx={ctx} goals={stats.goals} kinds={kind ? [kind] : kinds} now={now} />
 
-			{stats.bars.length > 0 && (
-				<section className="scout-stats-card">
-					<h3>{year === null ? "Finished per year" : "Finished per month"}</h3>
-					<BarChart bars={stats.bars} label={`Finished per ${year === null ? "year" : "month"}`} asTable={asTable} />
-				</section>
-			)}
+			<div className="scout-stats-grid">
+				{stats.bars.length > 0 && (
+					<section className="scout-stats-card is-wide">
+						<CardHead title={year === null ? "Finished per year" : "Finished per month"} />
+						<BarChart
+							bars={stats.bars}
+							label={`Finished per ${year === null ? "year" : "month"}`}
+							asTable={asTable}
+							current={year === null ? String(now.getFullYear()) : thisMonth}
+						/>
+					</section>
+				)}
 
-			<section className="scout-stats-card">
-				<h3>{year === null ? "The last twelve months" : `Every day of ${year}`}</h3>
-				<HeatmapChart heatmap={stats.heatmap} label="Days something was finished" asTable={asTable} />
-			</section>
-
-			<TimeAndRatings stats={stats} asTable={asTable} />
-
-			<div className="scout-stats-pair">
-				<Traits title="Top genres" traits={stats.genres} onSelect={(name) => show({ tags: [name] })} />
-				<Traits title="Top people" traits={stats.people} onSelect={(name) => show({ text: name })} />
-			</div>
-
-			<Habits ctx={ctx} stats={stats} />
-		</div>
-	);
-}
-
-function TimeAndRatings({ stats, asTable }: { stats: StatsData; asTable: boolean }): React.ReactElement {
-	return (
-		<div className="scout-stats-pair">
-			{stats.time.length > 0 && (
-				<section className="scout-stats-card">
-					<h3>Time spent</h3>
-					<dl className="scout-stats-figures">
-						{stats.time.map((figure) => (
-							<div key={figure.kind}>
-								<dt>{MEDIA_KIND_PLURALS[figure.kind]}</dt>
-								<dd>
-									{amountText(figure.amount, figure.unit)} {UNITS[figure.unit]}
-								</dd>
-								<dd className="scout-stats-note">
-									From {figure.known} of {figure.of} with{" "}
-									{figure.unit === "pages" ? "a page count" : figure.unit === "hours" ? "hours logged" : "a runtime"}
-								</dd>
-							</div>
-						))}
-					</dl>
-				</section>
-			)}
-			{stats.ratings.map((spread) => (
-				<section key={spread.kind} className="scout-stats-card">
-					<h3>
-						{MEDIA_KIND_PLURALS[spread.kind]} rated
-						<span className="scout-stats-note">
-							{" "}· {spread.count}, averaging {formatRating(Math.round(spread.average * 10) / 10)}/{spread.scale}
-						</span>
-					</h3>
-					<BarChart
-						label={`${MEDIA_KIND_PLURALS[spread.kind]} by rating out of ${spread.scale}`}
-						asTable={asTable}
-						bars={spread.buckets.map((bucket) => ({
-							key: String(bucket.upTo),
-							label: formatRating(bucket.upTo),
-							count: bucket.count,
-						}))}
+				<section className="scout-stats-card is-wide">
+					<CardHead
+						title={year === null ? "The last twelve months" : "Day by day"}
+						aside={
+							stats.heatmap.active > 0
+								? `${stats.heatmap.active} active ${stats.heatmap.active === 1 ? "day" : "days"} · longest streak ${stats.heatmap.streak}`
+								: undefined
+						}
 					/>
+					<HeatmapChart heatmap={stats.heatmap} label="Days something was finished" asTable={asTable} />
 				</section>
-			))}
+
+				<Ratings ratings={stats.ratings} asTable={asTable} />
+
+				<Traits title="Top genres" icon="tags" traits={stats.genres} onSelect={(name) => show({ tags: [name] })} />
+				<Traits title="Top people" icon="users" traits={stats.people} onSelect={(name) => show({ text: name })} />
+
+				<Shelves ctx={ctx} stats={stats} />
+			</div>
 		</div>
 	);
 }
 
-function Traits({
-	title,
-	traits,
-	onSelect,
+/** The headline: how many, of what, and the figures that go with it. */
+function Overview({
+	stats,
+	period,
+	asTable,
+	onKind,
 }: {
-	title: string;
-	traits: TraitStat[];
-	onSelect: (name: string) => void;
-}): React.ReactElement | null {
-	if (traits.length === 0) return null;
-	const max = Math.max(...traits.map((one) => one.count));
-	return (
-		<section className="scout-stats-card">
-			<h3>{title}</h3>
-			<ul className="scout-stats-traits">
-				{traits.map((one) => (
-					<li key={one.name}>
-						<button className="scout-stats-trait" onClick={() => onSelect(one.name)}>
-							<span className="scout-stats-trait-name">{one.name}</span>
-							<span className="scout-stats-note">
-								{one.count} · {deltaText(one.delta)}
-							</span>
-							<Meter value={one.count} max={max} label={`${one.name}: ${one.count}`} />
-						</button>
-					</li>
-				))}
-			</ul>
-		</section>
-	);
-}
-
-function Habits({ ctx, stats }: { ctx: ScoutContext; stats: StatsData }): React.ReactElement {
-	const open = (path: string) => new ScoutDetailModal(ctx, { entryPath: path }).open();
+	stats: StatsData;
+	period: string;
+	asTable: boolean;
+	onKind: (kind: MediaKind) => void;
+}): React.ReactElement {
 	const { dropped } = stats;
+	const ratedCount = stats.ratings.reduce((sum, one) => sum + one.count, 0);
 	return (
-		<div className="scout-stats-pair">
-			<section className="scout-stats-card">
-				<h3>Given up on</h3>
-				<p>
-					{dropped.of === 0
-						? "Nothing finished or dropped yet."
-						: `${dropped.count} of ${dropped.of} (${Math.round((dropped.count / dropped.of) * 100)}%) dropped rather than finished.`}
-				</p>
-				{stats.replays.length > 0 && (
+		<section className="scout-stats-hero">
+			<div className="scout-stats-total">
+				<div className="scout-stats-big">
+					<strong>{stats.finished}</strong>
+					<span>
+						finished {period === "all time" ? "all time" : `in ${period}`}
+						{stats.again > 0 && <em> · {stats.again} revisited</em>}
+					</span>
+				</div>
+				{stats.finished === 0 ? (
+					<p className="scout-stats-note">Nothing finished in this period yet. Mark something done and it shows up here.</p>
+				) : asTable ? (
+					<table className="scout-stats-table">
+						<caption>Finished by type</caption>
+						<tbody>
+							{stats.byKind.map(({ kind, count }) => (
+								<tr key={kind}>
+									<th scope="row">{MEDIA_KIND_PLURALS[kind]}</th>
+									<td>{count}</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				) : (
 					<>
-						<h3>Again and again</h3>
-						<ul className="scout-stats-list">
-							{stats.replays.map(({ entry, times }) => (
-								<li key={entry.path}>
-									<button className="scout-link-button" onClick={() => open(entry.path)}>
-										{entry.title}
-									</button>{" "}
-									<span className="scout-stats-note">{times} times</span>
+						<div className="scout-stats-split" aria-hidden>
+							{stats.byKind.map(({ kind, count }) => (
+								<span key={kind} style={{ flexGrow: count, background: kindColor(kind) }} />
+							))}
+						</div>
+						<ul className="scout-stats-legend">
+							{stats.byKind.map(({ kind, count }) => (
+								<li key={kind}>
+									<button className="scout-plain" onClick={() => onKind(kind)} title={`Open finished ${MEDIA_KIND_PLURALS[kind].toLowerCase()}`}>
+										<span className="scout-stats-swatch" style={{ background: kindColor(kind) }} />
+										<Icon name={KIND_ICONS[kind]} size={14} />
+										<span>{MEDIA_KIND_PLURALS[kind]}</span>
+										<strong>{count}</strong>
+										<span className="scout-stats-note">{Math.round((count / stats.finished) * 100)}%</span>
+									</button>
 								</li>
 							))}
 						</ul>
 					</>
 				)}
-			</section>
-			{stats.shelf.length > 0 && (
-				<section className="scout-stats-card">
-					<h3>
-						<Icon name="hourglass" size={14} /> Waiting longest
-					</h3>
-					<ul className="scout-stats-list">
-						{stats.shelf.map(({ entry, since, days }) => (
-							<li key={entry.path}>
-								<button className="scout-link-button" onClick={() => open(entry.path)}>
-									{entry.title}
-								</button>{" "}
-								<span className="scout-stats-note" title={`Since ${since}`}>
-									{days >= 365 ? `${Math.floor(days / 365)} yr` : `${days} days`}
-								</span>
-							</li>
-						))}
-					</ul>
-				</section>
-			)}
-		</div>
+			</div>
+			<dl className="scout-stats-kpis">
+				{stats.time.map((figure) => {
+					const [value, unit] = amountParts(figure.amount, figure.unit);
+					return (
+						<div
+							key={figure.kind}
+							title={
+								figure.known < figure.of
+									? `Worked out from ${figure.known} of ${figure.of} that record it`
+									: undefined
+							}
+						>
+							<dt>
+								<Icon name={KIND_ICONS[figure.kind]} size={13} /> {MEDIA_KIND_PLURALS[figure.kind]}
+							</dt>
+							<dd>
+								<strong>{value}</strong> {unit} {UNITS[figure.unit]}
+								{figure.known < figure.of && <span className="scout-stats-note"> · {figure.known} of {figure.of}</span>}
+							</dd>
+						</div>
+					);
+				})}
+				{stats.average !== null && (
+					<div>
+						<dt>
+							<Icon name="star" size={13} /> Average rating
+						</dt>
+						<dd>
+							<strong>{(Math.round(stats.average * 100) / 10).toFixed(1)}</strong> / 10
+							<span className="scout-stats-note"> · {ratedCount} rated</span>
+						</dd>
+					</div>
+				)}
+				{dropped.of > 0 && (
+					<div>
+						<dt>
+							<Icon name="circle-slash" size={13} /> Given up on
+						</dt>
+						<dd>
+							<strong>{Math.round((dropped.count / dropped.of) * 100)}%</strong>
+							<span className="scout-stats-note">
+								{" "}
+								· {dropped.count} of {dropped.of}
+							</span>
+						</dd>
+					</div>
+				)}
+			</dl>
+		</section>
 	);
 }

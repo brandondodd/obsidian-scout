@@ -67,16 +67,20 @@ function daysBetween(from: Date, to: Date): number {
 	return Math.round((b.getTime() - a.getTime()) / 86_400_000);
 }
 
+/**
+ * How long to wait, bare: "10 days", "5 weeks". It always sits beside a
+ * calendar icon, which already says it is a release.
+ */
 function inDays(days: number): string {
-	if (days === 0) return "Out today";
-	if (days === 1) return "Out tomorrow";
-	if (days < 14) return `Out in ${days} days`;
+	if (days === 0) return "Today";
+	if (days === 1) return "Tomorrow";
+	if (days < 14) return `${days} days`;
 	if (days < 60) {
 		const weeks = Math.round(days / 7);
-		return `Out in ${weeks} weeks`;
+		return `${weeks} weeks`;
 	}
 	const months = Math.round(days / 30);
-	return months >= 12 ? "Out in a year" : `Out in ${months} months`;
+	return months >= 12 ? "1 year" : `${months} months`;
 }
 
 /**
@@ -104,16 +108,14 @@ export function releaseCountdown(
 			(parsed.year - now.getFullYear()) * 12 +
 			(parsed.month - 1 - now.getMonth());
 		if (ahead < 0) return null;
-		if (ahead === 0) return "Out this month";
-		const name = MONTHS[parsed.month - 1];
-		return parsed.year === now.getFullYear()
-			? `Out in ${name}`
-			: `Out in ${name} ${parsed.year}`;
+		if (ahead === 0) return "This month";
+		const name = MONTHS[parsed.month - 1] ?? "";
+		return parsed.year === now.getFullYear() ? name : `${name} ${parsed.year}`;
 	}
 
 	// A bare year, which says nothing about where in it we are: this year is
 	// no longer news, so only a later one is worth a line.
-	return parsed.year > now.getFullYear() ? `Out in ${parsed.year}` : null;
+	return parsed.year > now.getFullYear() ? String(parsed.year) : null;
 }
 
 /**
@@ -156,14 +158,21 @@ export function productionLine(status: string | undefined): string | null {
  * year has a release, and a past one means it happened, whatever else the note
  * is missing.
  */
+/** "2 months" as a sentence of its own: "Out in 2 months", "Out today". */
+function outWhen(countdown: string): string {
+	if (/^(Today|Tomorrow|This month)$/.test(countdown)) return `Out ${countdown.toLowerCase()}`;
+	return `Out in ${countdown}`;
+}
+
 export function releaseLine(
 	raw: string | undefined,
 	year: number | undefined,
 	status?: string,
 	now: Date = new Date(),
 ): string | null {
+	// Worded in full: this line stands alone, with no calendar beside it.
 	const countdown = releaseCountdown(raw, now);
-	if (countdown) return countdown;
+	if (countdown) return outWhen(countdown);
 	const production = productionLine(status);
 	if (production) return production;
 	// A parsable date or a year both mean the release is known and behind us —

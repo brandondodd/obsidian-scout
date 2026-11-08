@@ -1,3 +1,4 @@
+import { sourceGenresFor } from "../../core/genres/genres";
 import type { MediaKind } from "../../core/types";
 
 /**
@@ -115,7 +116,17 @@ export function genreIds(
 			push(direct);
 			continue;
 		}
-		for (const id of aliases[key] ?? []) push(id);
+		const aliased = aliases[key];
+		if (aliased) {
+			for (const id of aliased) push(id);
+			continue;
+		}
+		// Scout's own genre names — "Talk show", "Space opera" — by way of
+		// whichever of TMDB's genres mean the same.
+		for (const name of sourceGenresFor(kind, [raw], Object.values(NAMES))) {
+			const id = BY_NAME.get(name.toLowerCase());
+			if (id !== undefined && valid(id, tv)) push(id);
+		}
 	}
 	return out;
 }

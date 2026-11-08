@@ -12,7 +12,8 @@ export function normalizePath(path: string): string {
 }
 
 export class Notice {
-	constructor(readonly message: string) {}
+	constructor(readonly message: unknown, readonly duration?: number) {}
+	hide(): void {}
 }
 
 export class TFile {
@@ -33,6 +34,15 @@ export class Modal {
 }
 
 export class Plugin {}
+export class Component {
+	load(): void {}
+	unload(): void {}
+}
+export class MarkdownRenderer {
+	static async render(): Promise<void> {}
+}
+export class Menu {}
+export class SettingGroup {}
 export class PluginSettingTab {}
 export class Setting {}
 export class SecretComponent {}
