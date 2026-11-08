@@ -1,3 +1,4 @@
+import type { TraitOptions } from "../../core/library/traits";
 import { Menu, Notice } from "obsidian";
 import React, { useEffect, useMemo, useReducer, useState } from "react";
 import type { ScoutContext } from "../../core/context";
@@ -89,18 +90,20 @@ export default function HomeView({ ctx }: HomeViewProps): React.ReactElement {
 	// Without this the model is back to eighteen genres and a director.
 	const enrichment = ctx.settings.enrichment();
 	const collections = ctx.settings.collections();
-	const { home, profile } = useMemo(() => {
+	const { home, profile, traitOptions } = useMemo(() => {
 		const now = new Date();
 		const manualCollections = new Set(
 			collections
 				.filter((one) => !one.auto)
 				.map((one) => one.name.trim().toLowerCase()),
 		);
-		const taste = buildTaste(config, entries, now, feedback, {
-			enrichment,
-			manualCollections,
-		});
-		return { home: buildHome(config, entries, taste, now), profile: taste };
+		const traitOptions = { enrichment, manualCollections };
+		const taste = buildTaste(config, entries, now, feedback, traitOptions);
+		return {
+			home: buildHome(config, entries, taste, now),
+			profile: taste,
+			traitOptions,
+		};
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [entries, config, feedback, enrichment, collections]);
 
@@ -130,7 +133,12 @@ export default function HomeView({ ctx }: HomeViewProps): React.ReactElement {
 				ctx={ctx}
 			/>
 
-			<Suggestions ctx={ctx} entries={entries} profile={profile} />
+			<Suggestions
+				ctx={ctx}
+				entries={entries}
+				profile={profile}
+				traitOptions={traitOptions}
+			/>
 
 			<Row
 				title="Picked back up?"
@@ -469,10 +477,13 @@ function Suggestions({
 	ctx,
 	entries,
 	profile,
+	traitOptions,
 }: {
 	ctx: ScoutContext;
 	entries: readonly LibraryEntry[];
 	profile: TasteProfile;
+	/** Enrichment and hand-kept collections, so the engine plans with them too. */
+	traitOptions: TraitOptions;
 }): React.ReactElement | null {
 	const config = ctx.settings.library();
 	const feedback = ctx.settings.feedback();
@@ -496,6 +507,7 @@ function Suggestions({
 		profile,
 		feedback,
 		kinds,
+		traitOptions,
 		rotation: ctx.settings.rotation(),
 		shown: ctx.settings.shownLog(),
 		onShown: (keys) => ctx.settings.markShown(keys),

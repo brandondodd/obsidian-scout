@@ -85,10 +85,17 @@ Each title is looked up at its source, so imported notes come out of the same te
 
 **Open stats** (or **Stats** on the home page) shows, for any year or all time and any type: what you finished and when, a calendar of finish days, time spent where your notes record runtimes, pages, or hours, how you rate, your top genres and people against your own average, rewatches, what you gave up on, and what has waited longest. Set a yearly goal per type there — "52 books" — and its progress also shows on the home page. Every chart can be read as a table instead.
 
+## Ask your library
+
+Off by default. Turn it on under **Settings → Scout → AI** with your own [Anthropic API key](https://console.anthropic.com), then run **Ask your library** and type a question — "sci-fi I loved from the 90s", "books I gave up on", "anything with Villeneuve I haven't finished". Claude turns the question into the library's own filters, and the library opens filtered to the answer. What Claude suggests is checked against your library first, and anything it has no match for (a genre you never use, say) is left out and named.
+
 ## Commands
+
 
 - **Open library** — browse and manage everything you have
 - **Open stats** — what you finished, when, and what you made of it
+- **Ask your library** — a question in plain words, answered with the library's filters (only when turned on)
+- **Evaluate suggestions** — scores how well suggestions fit your own library, so a change to the recommender can be judged by a number
 - **Import library…** — bring in a Letterboxd, Goodreads, StoryGraph, or AniList history
 - **Search all sources** — one modal across every enabled source
 - **Search movies / TV shows / books / games / albums / …** — per-kind, hidden when no configured source offers that kind
@@ -158,6 +165,10 @@ pnpm run build
 
 `dev` and `build` both write `main.js` to the repo root. `build` also mirrors the release artifacts into `dist/` (gitignored — attach them to a GitHub release).
 
+### Measuring suggestions
+
+Run **Evaluate suggestions** before and after changing the recommender. The *taste check* hides a fifth of your rated titles at a time and measures how often a liked one outscores a disliked one (AUC; 0.5 is chance), offline. The *suggestion check* hides your ten latest liked finishes and counts how many the engine suggests back. It asks your sources once and keeps their answers in `eval-recordings.json` (gitignored); turn on **Use kept answers only** to replay them offline, so two runs compare the recommender and not the sources' moods.
+
 ### Live reload
 
 1. Install and enable [hot-reload](https://github.com/pjeby/hot-reload) in your test vault.
@@ -181,6 +192,7 @@ The library is built entirely from notes already in your vault. Scout contacts a
 - for **background refresh** (on by default, **Settings → Scout → Background**): re-checks notes that already record a source id, and updates only facts the source owns
   - the same switch lets Scout keep the library's Scout scores current: Open Library is asked for each book note's rating count (work ids only, fifty to a request), and, if you set up MDBList, MDBList for each film and show note's scores (TMDB ids only). These go into Scout's own cache, never into your notes
 - for **background reading-up** (off by default, same tab): fetches keywords, cast, and crew for linked notes to improve suggestions
+- when you **ask your library** (off by default, **Settings → Scout → AI**): your question, and the types, statuses, genres, and collection names your library uses, go to Anthropic's Claude API with your own key. Titles, notes, ratings, and people's names in your library are never sent; a name you type in the question is sent as typed. Anthropic's [privacy policy](https://www.anthropic.com/legal/privacy) applies to what it receives.
 - when you run an **import**: each title's name, year, author, and ISBN is searched for at its source (or, for AniList, the username you typed is looked up). The export file itself is read on your device and never sent anywhere. Stats never use the network.
 
 Opening the detail dialog asks that item's own source for its cast, availability, and so on. A source you have turned off is not contacted, even for a note that came from it. Web links are not fetched again when opened. MDBList, OMDb, and Apple are contacted only if you have set them up, as listed under [Optional extras](#optional-extras). MusicBrainz is off until you enable it under **Sources**, and is limited to one request a second as it asks.
@@ -189,7 +201,7 @@ Artwork and service logos in the dialog load from those sources' image servers, 
 
 Background jobs send only the source ids already in your notes — never note contents, file names, ratings, or thoughts. Reading-up results are kept in `cache.json` in the plugin folder, never in your notes.
 
-Your TMDB token, IGDB client secret, and MDBList and OMDb keys are kept in Obsidian's secret storage. If an older version stored it in `data.json`, it is copied into secret storage and the plain copy is kept as a fallback, so it keeps working on synced devices. Once every device runs this version, you can delete `accessToken` from `data.json`.
+Your TMDB token, IGDB client secret, MDBList and OMDb keys, and Anthropic key are kept in Obsidian's secret storage. If an older version stored it in `data.json`, it is copied into secret storage and the plain copy is kept as a fallback, so it keeps working on synced devices. Once every device runs this version, you can delete `accessToken` from `data.json`.
 
 No telemetry.
 

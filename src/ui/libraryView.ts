@@ -2,19 +2,17 @@ import { ItemView, type App, type WorkspaceLeaf } from "obsidian";
 import React from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { ScoutContext } from "../core/context";
-import type { LibraryQuery } from "../core/library/filter";
+import type { QueryFilters } from "../core/library/query";
 import LibraryViewComponent from "./components/LibraryView";
 
 export const LIBRARY_VIEW_TYPE = "scout-library";
 
 /**
  * A narrowing to open the library at — what the stats page asks for when a
- * genre or a person is clicked. Applied on top of the whole library, never a
+ * genre or a person is clicked, or what "Ask your library" answered. Applied on top of the whole library, never a
  * saved view, and never saved itself: it is a question asked once.
  */
-export type LibraryFocus = Partial<
-	Pick<LibraryQuery, "kinds" | "statuses" | "tags" | "text">
->;
+export type LibraryFocus = Partial<QueryFilters> & { text?: string };
 
 /** Workspace view hosting the React library browser. */
 export class ScoutLibraryView extends ItemView {

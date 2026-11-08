@@ -18,6 +18,8 @@ main.js
 # obsidian
 data.json
 cache.json
+# Kept source answers from "Evaluate suggestions"
+eval-recordings.json
 
 # Release artifacts mirrored by `pnpm build`; attach them to a GitHub release instead.
 dist/

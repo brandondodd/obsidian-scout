@@ -1,8 +1,11 @@
 import { Notice, Plugin } from "obsidian";
+import { aiKey } from "../core/ai/claude";
 import type { ScoutContext } from "../core/context";
+import { ScoutAskModal } from "../ui/askModal";
 import { isResolvable } from "../core/provider";
 import { ALL_MEDIA_KINDS, MEDIA_KIND_LABELS } from "../core/types";
 import { ScoutDetailModal } from "../ui/detailModal";
+import { ScoutEvaluateModal } from "../ui/evaluateModal";
 import { openHome } from "../ui/homeView";
 import { ScoutImportModal } from "../ui/importModal";
 import { openLibrary } from "../ui/libraryView";
@@ -46,6 +49,18 @@ export function registerCommands(plugin: Plugin, ctx: ScoutContext): void {
 	});
 
 	plugin.addCommand({
+		id: "ask-library",
+		name: "Ask your library",
+		checkCallback: (checking) => {
+			// Hidden until switched on with a key in Settings → Scout → AI.
+			const key = aiKey(settings);
+			if (!key) return false;
+			if (!checking) new ScoutAskModal(ctx, key).open();
+			return true;
+		},
+	});
+
+	plugin.addCommand({
 		id: "import-library",
 		name: "Import library…",
 		callback: () => new ScoutImportModal(ctx).open(),
@@ -85,6 +100,13 @@ export function registerCommands(plugin: Plugin, ctx: ScoutContext): void {
 			}
 			return true;
 		},
+	});
+
+	plugin.addCommand({
+		id: "evaluate-suggestions",
+		name: "Evaluate suggestions",
+		callback: () =>
+			new ScoutEvaluateModal(ctx, plugin.manifest.dir ?? "").open(),
 	});
 
 	plugin.addCommand({

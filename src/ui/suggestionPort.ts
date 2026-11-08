@@ -6,7 +6,7 @@ import {
 	isRecommendable,
 	isSeriesAware,
 } from "../core/provider";
-import type { MediaKind } from "../core/types";
+import type { MediaItem, MediaKind } from "../core/types";
 
 /**
  * The engine, wired to this vault.
@@ -17,7 +17,11 @@ import type { MediaKind } from "../core/types";
  * checked credentials, so a source the user had disabled in settings was still
  * being asked for suggestions.
  */
-export function suggestionPort(ctx: ScoutContext): SuggestionPort {
+export function suggestionPort(
+	ctx: ScoutContext,
+	owned: (item: MediaItem) => boolean = (item) =>
+		ctx.library.match(item) !== undefined,
+): SuggestionPort {
 	const enabled = (id: string) => ctx.settings.isProviderEnabled(id);
 
 	const facts: RegistryFacts = {
@@ -57,11 +61,9 @@ export function suggestionPort(ctx: ScoutContext): SuggestionPort {
 			// The gaps only. A series call returns the whole set including the
 			// film you already have, and "you have three of five" is a
 			// suggestion about the other two.
-			return (series?.items ?? []).filter(
-				(one) => ctx.library.match(one) === undefined,
-			);
+			return (series?.items ?? []).filter((one) => !owned(one));
 		},
-		owned: (item) => ctx.library.match(item) !== undefined,
+		owned,
 	};
 }
 
