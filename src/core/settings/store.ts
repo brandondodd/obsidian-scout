@@ -1,4 +1,5 @@
 import type { Plugin } from "obsidian";
+import { isFresh, pruneAnswers } from "../ai/answerCache";
 import {
 	normalizeCollections,
 	type CollectionDef,
@@ -475,6 +476,30 @@ export class ScoutSettings {
 
 	clearEnrichment(): void {
 		this.cache.enrichment = {};
+		this.scheduleCacheSave();
+		this.notify();
+	}
+
+	/* ---------------------------------------------------- saved AI answers */
+
+	/** One kept answer, or undefined when there is none or it has run out. */
+	answer(key: string, now = Date.now()): unknown {
+		const record = this.cache.answers[key];
+		return isFresh(record, now) ? record.value : undefined;
+	}
+
+	/** Files an answer. Quiet: only the page that asked is waiting for it. */
+	setAnswer(key: string, value: unknown, now = Date.now()): void {
+		this.cache.answers = pruneAnswers({ ...this.cache.answers, [key]: { at: now, value } }, now);
+		this.scheduleCacheSave();
+	}
+
+	answerCount(now = Date.now()): number {
+		return Object.values(this.cache.answers).filter((record) => isFresh(record, now)).length;
+	}
+
+	clearAnswers(): void {
+		this.cache.answers = {};
 		this.scheduleCacheSave();
 		this.notify();
 	}

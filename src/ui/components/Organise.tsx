@@ -21,6 +21,7 @@ import {
 	type LibraryGroupBy,
 	type LibrarySort,
 } from "../../core/library/config";
+import { moodFacets, themeFacets } from "../../core/library/facets";
 import { collectTags } from "../../core/library/filter";
 import { describeRule, ruleIsEmpty } from "../../core/library/rules";
 import { emptyView, type SavedView } from "../../core/library/views";
@@ -83,6 +84,8 @@ export default function Organise({
 			statuses: allStatuses(config),
 			collections: ctx.settings.collections().map((c) => c.name),
 			properties: [...properties].sort((a, b) => a.localeCompare(b)),
+			moods: moodFacets(entries).map((facet) => facet.label),
+			themes: themeFacets(entries).map((facet) => facet.label),
 		};
 	}, [entries, config, ctx.settings]);
 

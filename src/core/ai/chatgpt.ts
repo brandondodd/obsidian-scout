@@ -312,10 +312,11 @@ export class ChatGptSession {
 		return modelList(await this.http.getJson(`${RESOURCE}/models`, { headers: await this.headers(), retries: 0 }));
 	}
 
-	async complete<T>(model: string, request: AiRequest): Promise<T> {
+	async complete<T>(model: string, request: AiRequest, signal?: AbortSignal): Promise<T> {
 		const stream = await this.http.postJsonText(`${RESOURCE}/responses`, responsesBody(model, request), {
 			headers: await this.headers(),
 			retries: 0,
+			signal,
 		});
 		return parseAnswer<T>(responsesText(stream));
 	}

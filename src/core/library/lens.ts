@@ -84,6 +84,10 @@ export function filtersFromRule(rule: RuleGroup): { filters: LensFilters; extra:
 				if (filters.people.length > 0 || values.length === 0) return false;
 				filters.people = values;
 				return true;
+			case "mood/has":
+				if (filters.moods.length > 0 || values.length === 0) return false;
+				filters.moods = values;
+				return true;
 			case "collection/has":
 				if (values.length !== 1) return false;
 				filters.collections.push(values[0] as string);
@@ -164,7 +168,7 @@ export function filtersFromRule(rule: RuleGroup): { filters: LensFilters; extra:
 			genreSets.push({ values, source: g });
 			return true;
 		}
-		if (["kind/is", "status/is", "tone/is", "person/has"].includes(`${first.field}/${first.op}`)) {
+		if (["kind/is", "status/is", "tone/is", "person/has", "mood/has"].includes(`${first.field}/${first.op}`)) {
 			return absorb(as);
 		}
 		return false;

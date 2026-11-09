@@ -21,6 +21,7 @@ import { longDate } from "../../core/format";
 import { newCollection } from "../collections";
 import { hasEpisodes } from "../episodes";
 import { hasProgressCard } from "./detail/Cards";
+import { MoodsRow } from "./detail/Moods";
 import { Thoughts } from "./detail/Thoughts";
 import Rating from "./Rating";
 import { progressFraction, StatusIcon, statusClass } from "./Status";
@@ -139,6 +140,8 @@ export default function ManagePanel({
 			<DatesRow ctx={ctx} entry={entry} />
 
 			<CollectionRow ctx={ctx} entry={entry} />
+
+			<MoodsRow ctx={ctx} entry={entry} />
 
 			{custom.map((field) => (
 				<CustomFieldRow

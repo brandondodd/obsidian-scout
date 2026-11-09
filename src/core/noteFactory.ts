@@ -42,8 +42,12 @@ export interface CreateOptions {
  * provider gets folder creation, collision handling, YAML-safe rendering, and
  * missing-field warnings for free.
  */
+/** Told about each note a creation actually wrote. */
+export type CreatedListener = (item: MediaItem, note: { path: string; title: string }) => void;
+
 export class NoteFactory {
 	private readonly writer: NoteWriter;
+	private readonly created = new Set<CreatedListener>();
 
 	constructor(
 		private readonly app: App,
@@ -83,6 +87,16 @@ export class NoteFactory {
 			}
 		}
 		return safe;
+	}
+
+	/**
+	 * Hears about every note written, however it was asked for — search,
+	 * suggestions, a link, an import. Listeners must not throw or wait: the
+	 * creation is already done and returns without them.
+	 */
+	onCreated(listener: CreatedListener): () => void {
+		this.created.add(listener);
+		return () => this.created.delete(listener);
 	}
 
 	/**
@@ -136,6 +150,16 @@ export class NoteFactory {
 		});
 
 		if (outcome && !quiet) noticeForOutcome(outcome);
+		if (outcome && outcome.action !== "opened-existing") {
+			const note = { path: outcome.file.path, title: enriched.title };
+			for (const listener of this.created) {
+				try {
+					listener(enriched, note);
+				} catch (err) {
+					console.warn("Scout: a listener failed after creating a note", err);
+				}
+			}
+		}
 		return outcome;
 	}
 

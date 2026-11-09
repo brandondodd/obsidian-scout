@@ -1,4 +1,5 @@
 import { normalizePath, type Plugin } from "obsidian";
+import { normalizeAnswers, type AnswerLog } from "../ai/answerCache";
 import { normalizeEnrichment, type EnrichmentCache } from "../library/enrich";
 import { normalizeShown, type ShownLog } from "../library/feedback";
 import type { EarlierFilm, Outlook } from "../hype";
@@ -31,6 +32,8 @@ export interface ScoutCache {
 	 * Tomatoes, IMDb, and Metacritic as well, so the library reads it from here.
 	 */
 	scores: ScoreLog;
+	/** Scout's take and Across kinds, kept a month — see `answerCache.ts`. */
+	answers: AnswerLog;
 }
 
 export interface ScoreRecord {
@@ -153,7 +156,7 @@ function outlookOf(raw: unknown): { outlook?: Outlook & { at: number } } {
 export const CACHE_KEYS = ["checked", "shown", "enrichment", "rotation"] as const;
 
 export function emptyCache(): ScoutCache {
-	return { checked: {}, shown: {}, enrichment: {}, rotation: 0, scores: {} };
+	return { checked: {}, shown: {}, enrichment: {}, rotation: 0, scores: {}, answers: {} };
 }
 
 /** Reads a stored blob defensively — it is hand-editable. */
@@ -176,6 +179,7 @@ export function normalizeCache(raw: unknown): ScoutCache {
 		enrichment: normalizeEnrichment(at.enrichment),
 		rotation,
 		scores: normalizeScores(at.scores),
+		answers: normalizeAnswers(at.answers),
 	};
 }
 
@@ -190,6 +194,7 @@ export function mergeCaches(file: ScoutCache, legacy: ScoutCache): ScoutCache {
 		enrichment: { ...legacy.enrichment, ...file.enrichment },
 		rotation: Math.max(file.rotation, legacy.rotation),
 		scores: { ...legacy.scores, ...file.scores },
+		answers: { ...legacy.answers, ...file.answers },
 	};
 }
 

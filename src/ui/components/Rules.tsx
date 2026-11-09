@@ -39,6 +39,9 @@ export interface RuleSuggestions {
 	statuses: string[];
 	collections: string[];
 	properties: string[];
+	/** Moods and themes in use; their fields are only offered once there are some. */
+	moods: string[];
+	themes: string[];
 }
 
 const MATCH_LABELS: Record<RuleMatch, string> = {
@@ -189,7 +192,13 @@ function ConditionRow({
 				value={condition.field}
 				onChange={(e) => setField(e.target.value as RuleField)}
 			>
-				{(Object.keys(RULE_FIELDS) as RuleField[]).map((field) => (
+				{(Object.keys(RULE_FIELDS) as RuleField[])
+					.filter(
+						(field) =>
+							field === condition.field ||
+							(field === "mood" ? suggestions.moods.length > 0 : field === "theme" ? suggestions.themes.length > 0 : true),
+					)
+					.map((field) => (
 					<option key={field} value={field}>
 						{RULE_FIELDS[field].label}
 					</option>
@@ -353,7 +362,11 @@ function ValueInput({
 					? suggestions.statuses
 					: condition.field === "collection"
 						? suggestions.collections
-						: [];
+						: condition.field === "mood"
+							? suggestions.moods
+							: condition.field === "theme"
+								? suggestions.themes
+								: [];
 
 	return (
 		<SuggestInput

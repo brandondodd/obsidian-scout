@@ -25,14 +25,15 @@ import type { Show } from "./useShow";
 const headerIcon = (kind: MediaKind): string =>
 	kind === "anime" ? "tv" : kind === "manga" ? "book" : KIND_ICONS[kind];
 
-const posterShape = (kind: MediaKind, extras: ItemExtras): string => {
+/**
+ * The artwork's frame, as a class. Known before the source answers, so the
+ * header does not change shape when it does: a game's cover is a portrait box
+ * like a film's, and only a web link's preview is wide.
+ */
+export const posterShape = (kind: MediaKind, extras: ItemExtras): string => {
 	const shape =
 		extras.shape ??
-		(kind === "game" || kind === "link"
-			? "wide"
-			: kind === "album"
-				? "square"
-				: "poster");
+		(kind === "link" ? "wide" : kind === "album" ? "square" : "poster");
 	return shape === "wide" ? " sd-wide" : shape === "square" ? " sd-sq" : "";
 };
 
@@ -193,6 +194,7 @@ export function Hero({
 					{bar && (
 						<button
 							className="sd-watchbar"
+							title={`${bar.caption}: ${bar.name}`}
 							onClick={() => onScrollTo("where")}
 						>
 							<ServiceLogo tile={bar.tile} />
@@ -205,132 +207,149 @@ export function Hero({
 				</div>
 
 				<div className="sd-head">
-					<h2>{view.title}</h2>
-					{byline && (
-						<p className="sd-byline">
-							<Dotted text={byline} />
-						</p>
-					)}
-					<Facts className="sd-meta">
-						<span className="sd-kind">
-							<Icon name={headerIcon(view.kind)} size={14} /> {kindLabel}
-						</span>
-						{facts && !isLink ? <span className="sd-mi">{facts}</span> : null}
-						{extras.ageRating && (
-							<span className="sd-mi">
-								<span className="sd-cert">
-									{ageRatingBadge(extras.ageRating)}
+					{/* Two halves: what it is, and what you can do with it. One
+					    column on a desktop, where the wrappers change nothing; on a
+					    phone the first sits beside the poster and the second runs
+					    the full width under both. */}
+					<div className="sd-head-id">
+						<h2>{view.title}</h2>
+						{byline && (
+							<p className="sd-byline">
+								<Dotted text={byline} />
+							</p>
+						)}
+						<Facts className="sd-meta">
+							<span className="sd-kind">
+								<Icon name={headerIcon(view.kind)} size={14} /> {kindLabel}
+							</span>
+							{facts && !isLink ? <span className="sd-mi">{facts}</span> : null}
+							{extras.ageRating && (
+								<span className="sd-mi">
+									<span className="sd-cert">
+										{ageRatingBadge(extras.ageRating)}
+									</span>
 								</span>
-							</span>
-						)}
-						{extras.headerFacts.map((fact) => (
-							<span className="sd-mi" key={fact}>
-								{fact}
-							</span>
-						))}
-						{facts && isLink ? <span className="sd-mi">{facts}</span> : null}
-						{view.tags.length > 0 && !isLink && (
-							<span className="sd-mi">{view.tags.slice(0, 3).join(", ")}</span>
-						)}
-						{soon && <span className="sd-mi">{soon}</span>}
-					</Facts>
+							)}
+							{extras.headerFacts.map((fact) => (
+								<span className="sd-mi" key={fact}>
+									{fact}
+								</span>
+							))}
+							{facts && isLink ? <span className="sd-mi">{facts}</span> : null}
+							{view.tags.length > 0 && !isLink && (
+								<span className="sd-mi">{view.tags.slice(0, 3).join(", ")}</span>
+							)}
+							{soon && <span className="sd-mi">{soon}</span>}
+						</Facts>
 
-					<ProgressLine
-						entry={entry}
-						show={show}
-						extras={extras}
-						episodic={episodic}
-					/>
-					{extras.tagline && <p className="sd-tagline">{extras.tagline}</p>}
-
-					{isLink ||
-					(!entry && !loading && !row.scout && !row.hype && !row.rt && row.boxes.length === 0) ? (
-						<div className="sd-gap" />
-					) : (
-						<ScoreBoxes
-							yours={entry?.rating}
-							showYours={Boolean(entry)}
-							row={row}
-							loading={loading}
-							onRate={() => onScrollTo("yours")}
+						<ProgressLine
+							entry={entry}
+							show={show}
+							extras={extras}
+							episodic={episodic}
 						/>
-					)}
+					</div>
+					<div className="sd-head-do">
+						{extras.tagline && <p className="sd-tagline">{extras.tagline}</p>}
 
-					<div className="sd-actions">
-						{!entry && canCreate && (
-							<button
-								className="sd-btn sd-cta"
-								disabled={busy}
-								onClick={onCreate}
-							>
-								<Icon name="plus" size={15} />
-								{busy ? "Creating…" : "Add to library"}
-							</button>
+						{isLink ||
+						(!entry && !loading && !row.scout && !row.hype && !row.rt && row.boxes.length === 0) ? (
+							<div className="sd-gap" />
+						) : (
+							<ScoreBoxes
+								yours={entry?.rating}
+								showYours={Boolean(entry)}
+								row={row}
+								loading={loading}
+								onRate={() => onScrollTo("yours")}
+							/>
 						)}
-						{entry && (
-							<button
-								className="sd-btn sd-cta"
-								onClick={() => {
-									void ctx.mutator.open(entry);
-									onClose();
-								}}
-							>
-								<Icon name="file-text" size={15} /> Open note
-							</button>
-						)}
-						{entry && <ReplayControl ctx={ctx} entry={entry} />}
-						{trailer && (
-							<button
-								className="sd-btn sd-solid-icon"
-								onClick={() => openUrl(trailer.url)}
-							>
-								<Icon name="play" size={13} /> Trailer
-							</button>
-						)}
-						{isLink && view.url && (
-							<button
-								className="sd-btn"
-								onClick={() => view.url && openUrl(view.url)}
-							>
-								<Icon name="external-link" size={15} /> Open link
-							</button>
-						)}
-						{!entry && !isLink && view.url && (
-							<button
-								className="sd-btn"
-								onClick={() => view.url && openUrl(view.url)}
-							>
-								<Icon name="external-link" size={15} /> Source
-							</button>
-						)}
-						{entry && (
-							<button
-								className={`sd-btn sd-icon sd-fav${
-									entry.favorite ? " sd-on" : ""
-								}`}
-								aria-pressed={entry.favorite}
-								aria-label={
-									entry.favorite
-										? "Remove from favourites"
-										: "Add to favourites"
-								}
-								onClick={() => void ctx.mutator.toggleFavorite(entry)}
-							>
-								<Icon name="heart" size={16} />
-							</button>
-						)}
-						{entry && (
-							<button
-								className="sd-btn sd-icon"
-								aria-label="More actions"
-								title="More"
-								onClick={(event) =>
-									moreMenu(ctx, entry, view.url, onClose, event)
-								}
-							>
-								<Icon name="more-horizontal" size={16} />
-							</button>
-						)}
+
+						<div className="sd-actions">
+							{!entry && canCreate && (
+								<button
+									className="sd-btn sd-cta"
+									disabled={busy}
+									onClick={onCreate}
+								>
+									<Icon name="plus" size={15} />
+									{/* Both labels hold the room, so the buttons beside
+									    this one stay put while the note is made. */}
+									<span className="sd-swap">
+										<span className={busy ? "sd-off" : undefined}>
+											Add to library
+										</span>
+										<span className={busy ? undefined : "sd-off"}>
+											Creating…
+										</span>
+									</span>
+								</button>
+							)}
+							{entry && (
+								<button
+									className="sd-btn sd-cta"
+									onClick={() => {
+										void ctx.mutator.open(entry);
+										onClose();
+									}}
+								>
+									<Icon name="file-text" size={15} /> Open note
+								</button>
+							)}
+							{entry && <ReplayControl ctx={ctx} entry={entry} />}
+							{trailer && (
+								<button
+									className="sd-btn sd-solid-icon"
+									onClick={() => openUrl(trailer.url)}
+								>
+									<Icon name="play" size={13} /> Trailer
+								</button>
+							)}
+							{isLink && view.url && (
+								<button
+									className="sd-btn"
+									onClick={() => view.url && openUrl(view.url)}
+								>
+									<Icon name="external-link" size={15} /> Open link
+								</button>
+							)}
+							{!entry && !isLink && view.url && (
+								<button
+									className="sd-btn"
+									onClick={() => view.url && openUrl(view.url)}
+								>
+									<Icon name="external-link" size={15} /> Source
+								</button>
+							)}
+							{entry && (
+								<button
+									className={`sd-btn sd-icon sd-fav${
+										entry.favorite ? " sd-on" : ""
+									}`}
+									aria-pressed={entry.favorite}
+									aria-label={
+										entry.favorite
+											? "Remove from favourites"
+											: "Add to favourites"
+									}
+									onClick={() => void ctx.mutator.toggleFavorite(entry)}
+								>
+									<Icon name="heart" size={16} />
+								</button>
+							)}
+							{entry && (
+								<button
+									className="sd-btn sd-icon"
+									aria-label="More actions"
+									title="More"
+									onClick={(event) =>
+										moreMenu(ctx, entry, view.url, onClose, event)
+									}
+								>
+									<Icon name="more-horizontal" size={16} />
+								</button>
+							)}
+						</div>
 					</div>
 				</div>
 			</div>

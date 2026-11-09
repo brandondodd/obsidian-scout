@@ -101,6 +101,9 @@ export interface LibraryEntry {
 	watchedEpisodes?: readonly string[];
 	/** Collections the note names itself a member of. */
 	collections: string[];
+	/** How it feels and what it is about, as written in the note — see `FieldMap.moods`. */
+	moods: string[];
+	themes: string[];
 
 	created: number;
 	modified: number;
@@ -371,6 +374,8 @@ export function buildEntry(
 		episodeLog: readEpisodeLog(read(keys, config, "episodeLog")),
 		watchedEpisodes: [...readWatchedSet(read(keys, config, "watched"))].sort(),
 		collections: asList(read(keys, config, "collections")),
+		moods: asList(read(keys, config, "moods")),
+		themes: asList(read(keys, config, "themes")),
 
 		created: source.created,
 		modified: source.modified,
@@ -427,6 +432,8 @@ export function sameEntry(a: LibraryEntry, b: LibraryEntry): boolean {
 		sameList(a.authored, b.authored) &&
 		sameList(a.history, b.history) &&
 		sameList(a.collections, b.collections) &&
+		sameList(a.moods, b.moods) &&
+		sameList(a.themes, b.themes) &&
 		sameList(a.watchedEpisodes ?? [], b.watchedEpisodes ?? []) &&
 		sameFrontmatter(a.frontmatter, b.frontmatter)
 	);

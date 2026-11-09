@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState, type RefObject } from "react";
 import { withinLabel, type FilterCategory } from "../../../core/library/chips";
 import { statusTone, type LibraryConfig, type StatusTone } from "../../../core/library/config";
 import type { LibraryEntry } from "../../../core/library/entry";
-import { collectionFacets, peopleFacets, yearRange } from "../../../core/library/facets";
+import { collectionFacets, moodFacets, peopleFacets, yearRange } from "../../../core/library/facets";
 import { emptyFilters, type LensFilters } from "../../../core/library/lens";
 import { isReleased, TONE_LABELS } from "../../../core/library/rules";
 import { ALL_MEDIA_KINDS, MEDIA_KIND_PLURALS, type MediaKind } from "../../../core/types";
@@ -20,12 +20,13 @@ import { useDismiss } from "./useDismiss";
  * choices, and a menu that closes after each one makes you open it three times.
  */
 
-type Pane = "type" | "progress" | "genre" | "when" | "rating" | "people" | "collection";
+type Pane = "type" | "progress" | "genre" | "mood" | "when" | "rating" | "people" | "collection";
 
 const PANES: { id: Pane; label: string; icon: string }[] = [
 	{ id: "type", label: "Type", icon: "shapes" },
 	{ id: "progress", label: "Progress", icon: "play" },
 	{ id: "genre", label: "Genre", icon: "tag" },
+	{ id: "mood", label: "Mood", icon: "sparkles" },
 	{ id: "when", label: "When", icon: "calendar" },
 	{ id: "rating", label: "Rating", icon: "star" },
 	{ id: "people", label: "People", icon: "user" },
@@ -55,6 +56,8 @@ export function paneFor(category: FilterCategory): Pane {
 			return "people";
 		case "collection":
 			return "collection";
+		case "mood":
+			return "mood";
 	}
 }
 
@@ -68,6 +71,7 @@ function setPanes(f: LensFilters): Set<Pane> {
 	if (f.minRating || f.rated !== "any" || f.minSource) on.add("rating");
 	if (f.people.length) on.add("people");
 	if (f.collections.length) on.add("collection");
+	if (f.moods.length) on.add("mood");
 	return on;
 }
 
@@ -91,11 +95,15 @@ export function FilterPicker(props: FilterPickerProps): React.ReactElement {
 	const box = useRef<HTMLDivElement>(null);
 	useDismiss(box, true, onClose, props.anchor);
 	const on = setPanes(filters);
+	// Moods come from notes' own properties, which only exist once something
+	// has filled them in — no tab for a filter that could find nothing.
+	const hasMoods = useMemo(() => entries.some((entry) => entry.moods.length > 0), [entries]);
+	const panes = PANES.filter((one) => one.id !== "mood" || hasMoods || filters.moods.length > 0);
 
 	return (
 		<div className="scout-picker" ref={box} role="dialog" aria-label="Filters">
 			<div className="scout-picker-tabs" role="tablist">
-				{PANES.map((one) => (
+				{panes.map((one) => (
 					<button
 						key={one.id}
 						role="tab"
@@ -115,6 +123,7 @@ export function FilterPicker(props: FilterPickerProps): React.ReactElement {
 				{pane === "genre" && (
 					<GenrePane entries={entries} filters={filters} onChange={onChange} />
 				)}
+				{pane === "mood" && <MoodPane {...props} />}
 				{pane === "when" && <WhenPane {...props} />}
 				{pane === "rating" && <RatingPane {...props} config={config} />}
 				{pane === "people" && <PeoplePane {...props} />}
@@ -441,6 +450,36 @@ function PeoplePane({ entries, filters, onChange }: FilterPickerProps) {
 				))}
 			</Section>
 		</>
+	);
+}
+
+function MoodPane({ entries, filters, onChange }: FilterPickerProps) {
+	const moods = useMemo(() => {
+		const scoped = filters.kinds.length
+			? entries.filter((entry) => filters.kinds.includes(entry.kind))
+			: entries;
+		return moodFacets(scoped);
+	}, [entries, filters.kinds]);
+	const lower = filters.moods.map((one) => one.toLowerCase());
+	if (moods.length === 0) return <p className="scout-pick-empty">No moods in these notes yet.</p>;
+	return (
+		<Section label="Feels like any of">
+			{moods.map((mood) => (
+				<Chip
+					key={mood.label}
+					label={mood.label}
+					count={mood.count}
+					on={lower.includes(mood.label.toLowerCase())}
+					onClick={() =>
+						onChange({
+							moods: lower.includes(mood.label.toLowerCase())
+								? filters.moods.filter((one) => one.toLowerCase() !== mood.label.toLowerCase())
+								: [...filters.moods, mood.label],
+						})
+					}
+				/>
+			))}
+		</Section>
 	);
 }
 

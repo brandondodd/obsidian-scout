@@ -55,6 +55,15 @@ export interface FieldMap {
 	 * collection by typing.
 	 */
 	collections: string;
+	/**
+	 * How a title feels and what it is about, as Scout's AI describes them.
+	 *
+	 * Written into the note, like collections, so the description is yours to
+	 * read, correct and query — but only ever into an empty property. Anything
+	 * already there, typed by you or written earlier, is left alone.
+	 */
+	moods: string;
+	themes: string;
 }
 
 export type FieldKey = keyof FieldMap;
@@ -82,6 +91,8 @@ export const DEFAULT_FIELD_MAP: FieldMap = {
 	episodeLog: "episode_log",
 	watched: "watched_episodes",
 	collections: "collections",
+	moods: "moods",
+	themes: "themes",
 };
 
 /**
@@ -148,6 +159,8 @@ export const FIELD_FALLBACKS: Record<FieldKey, readonly string[]> = {
 	episodeLog: ["episode_log", "episode_ratings", "episode_notes"],
 	watched: ["watched_episodes", "seen_episodes", "episodes_seen"],
 	collections: ["collections", "collection", "shelves", "lists"],
+	moods: ["moods", "mood"],
+	themes: ["themes", "theme"],
 };
 
 /** Labels for the field-mapping settings, and whether Scout writes the key. */
@@ -223,6 +236,16 @@ export const FIELD_INFO: Record<
 	collections: {
 		name: "Collections",
 		desc: "Which collections the note belongs to. Written when you add it to one, and read by the collection filters.",
+		writes: true,
+	},
+	moods: {
+		name: "Moods",
+		desc: "How it feels — cozy, tense, melancholy. Filled in by AI tagging when empty, and read by the mood filter and your taste.",
+		writes: true,
+	},
+	themes: {
+		name: "Themes",
+		desc: "What it is about — grief, heists, first contact. Filled in by AI tagging when empty.",
 		writes: true,
 	},
 };

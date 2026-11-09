@@ -396,7 +396,12 @@ export function recordingPort(
 
 const pct = (value: number | null) => (value === null ? "n/a" : value.toFixed(3));
 
-export function formatReport(taste: TasteCheck | null, pipeline: PipelineCheck | null): string {
+export function formatReport(
+	taste: TasteCheck | null,
+	pipeline: PipelineCheck | null,
+	/** The taste check again with moods and themes left out, to show what they add. */
+	withoutAi: TasteCheck | null = null,
+): string {
 	const lines: string[] = [];
 	if (taste) {
 		lines.push(
@@ -409,6 +414,12 @@ export function formatReport(taste: TasteCheck | null, pipeline: PipelineCheck |
 			`| Full score | ${pct(taste.score)} |`,
 			`| Taste alone | ${pct(taste.fit)} |`,
 			`| Source rating alone (baseline) | ${pct(taste.source)} |`,
+			...(withoutAi
+				? [
+						`| Full score, without moods and themes | ${pct(withoutAi.score)} |`,
+						`| Taste alone, without moods and themes | ${pct(withoutAi.fit)} |`,
+					]
+				: []),
 			"",
 		);
 		if (taste.byKind.length > 1) {

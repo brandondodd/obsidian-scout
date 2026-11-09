@@ -66,6 +66,23 @@ export interface AiRequest {
 	system: string;
 	prompt: string;
 	schema: Record<string, unknown>;
+	/**
+	 * Room for the answer, where the service lets it be set. A batch of forty
+	 * titles' tags needs far more than one question's filter does.
+	 */
+	maxTokens?: number;
+}
+
+/**
+ * Which of the person's two models to ask: the main one for writing that is
+ * read, the fast one for bulk work like tagging, where a cheaper model does
+ * as well and a library of a thousand titles would otherwise cost a lot.
+ */
+export type ModelTier = "main" | "fast";
+
+export interface AskOptions {
+	tier?: ModelTier;
+	signal?: AbortSignal;
 }
 
 export interface AiModel {

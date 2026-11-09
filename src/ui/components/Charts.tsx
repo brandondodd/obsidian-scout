@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useLayoutEffect, useRef } from "react";
 import type { Bar, Heatmap } from "../../core/library/stats";
 
 /**
@@ -133,12 +133,28 @@ export function HeatmapChart({
 	const active = heatmap.days.filter(
 		(day): day is { date: string; count: number } => day !== null && day.count > 0,
 	);
-	if (asTable) return <Table label={label} rows={active.map((day) => [day.date, day.count])} />;
 	const weeks = Math.ceil(heatmap.days.length / 7);
+	// Where the latest activity is, as a fraction of the year's width.
+	let latest = -1;
+	heatmap.days.forEach((day, at) => {
+		if (day && day.count > 0) latest = at;
+	});
+	const reach = latest < 0 ? 1 : (Math.floor(latest / 7) + 1) / weeks;
+	const scroll = useRef<HTMLDivElement>(null);
+	// Too narrow for a year — a phone — the strip scrolls, and it opened on
+	// January, which is the far end from everything recent. It opens on the
+	// latest finish instead, near the right edge, with what led up to it on the
+	// left. Where the year fits there is nothing to scroll and this does nothing.
+	useLayoutEffect(() => {
+		const el = scroll.current;
+		if (!el || el.scrollWidth <= el.clientWidth) return;
+		el.scrollLeft = Math.max(0, reach * el.scrollWidth - el.clientWidth * 0.85);
+	}, [reach, asTable]);
+	if (asTable) return <Table label={label} rows={active.map((day) => [day.date, day.count])} />;
 	const columns = { gridTemplateColumns: `repeat(${weeks}, minmax(9px, 1fr))` };
 	return (
 		<div className="scout-heatmap-wrap">
-			<div className="scout-heatmap-scroll">
+			<div className="scout-heatmap-scroll" ref={scroll}>
 				<div className="scout-heatmap-frame">
 					<div className="scout-heatmap-days" aria-hidden>
 						<span>Mon</span>

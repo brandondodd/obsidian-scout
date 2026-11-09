@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import type { ScoutContext } from "../core/context";
 import type { QueryFilters } from "../core/library/query";
 import LibraryViewComponent from "./components/LibraryView";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 export const LIBRARY_VIEW_TYPE = "scout-library";
 
@@ -12,7 +13,31 @@ export const LIBRARY_VIEW_TYPE = "scout-library";
  * genre or a person is clicked, or what "Ask your library" answered. Applied on top of the whole library, never a
  * saved view, and never saved itself: it is a question asked once.
  */
-export type LibraryFocus = Partial<QueryFilters> & { text?: string };
+export type LibraryFocus = Partial<QueryFilters> & {
+	text?: string;
+	/**
+	 * An explicit set of notes, named — what a thread opens. Its membership is
+	 * worked out by the caller (see `threadMembers`) and no filter can say it,
+	 * so it sits beside the filters as one chip until cleared.
+	 */
+	scope?: LibraryScope;
+	/**
+	 * What the AI made of the question this focus answers, for the one quiet
+	 * line under the toolbar. Absent for a focus set by a click.
+	 */
+	note?: LibraryNote;
+};
+
+export interface LibraryNote {
+	summary: string;
+	/** Words that matched nothing in the library, and were left out. */
+	unknown: readonly string[];
+}
+
+export interface LibraryScope {
+	label: string;
+	paths: readonly string[];
+}
 
 /** Workspace view hosting the React library browser. */
 export class ScoutLibraryView extends ItemView {
@@ -56,10 +81,14 @@ export class ScoutLibraryView extends ItemView {
 
 	private render(): void {
 		this.root?.render(
-			React.createElement(LibraryViewComponent, {
-				ctx: this.ctx,
-				focus: this.focus,
-			}),
+			React.createElement(
+				ErrorBoundary,
+				{ what: "library" },
+				React.createElement(LibraryViewComponent, {
+					ctx: this.ctx,
+					focus: this.focus,
+				}),
+			),
 		);
 	}
 

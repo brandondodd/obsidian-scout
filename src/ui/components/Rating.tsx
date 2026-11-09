@@ -263,6 +263,9 @@ export default function Rating({
 	}
 
 	const path = PATHS[icon];
+	if (readOnly) {
+		return <RatingStrip path={path} value={value} scale={scale} slots={slots} size={size} />;
+	}
 	const shown = hover ?? value ?? 0;
 	const positions = Array.from({ length: slots }, (_, i) => i + 1);
 	/** Rating units one whole icon is worth: 1 out of five, 2 out of ten. */
@@ -386,6 +389,82 @@ export default function Rating({
 						)}
 					</span>
 				)
+			)}
+		</span>
+	);
+}
+
+/** The space between two icons, as `.scout-rating`'s gap. */
+const GAP = 1;
+
+/** Each icon's shape as a mask, made once per icon. */
+const masks = new Map<string, string>();
+function maskOf(path: string): string {
+	let mask = masks.get(path);
+	if (!mask) {
+		const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="${path}"/></svg>`;
+		mask = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+		masks.set(path, mask);
+	}
+	return mask;
+}
+
+/**
+ * A rating to read rather than set, as one strip.
+ *
+ * Every card on a shelf carries one, and drawn as the control is, five icons
+ * of two pictures each, it was over half of each card: thirty-five elements to
+ * style, lay out and paint, times every card, every time a view is switched
+ * to. Here the row of icons is one mask over a track, and the score one bar
+ * across it, cut by the same mask, so it fills icon by icon exactly as the
+ * control does.
+ */
+function RatingStrip({
+	path,
+	value,
+	scale,
+	slots,
+	size,
+}: {
+	path: string;
+	value: number | undefined;
+	scale: number;
+	slots: number;
+	size: number;
+}): React.ReactElement {
+	const perSlot = scale / slots;
+	const units = Math.min(Math.max((value ?? 0) / perSlot, 0), slots);
+	const whole = Math.floor(units);
+	// Whole icons, the gaps after them, and the part of the next icon.
+	const filled = whole * (size + GAP) + (units - whole) * size;
+	const mask = maskOf(path);
+	return (
+		<span className="scout-rating is-readonly">
+			<span className="scout-sr-only">
+				{value === undefined
+					? "Not rated"
+					: `Rated ${formatRating(value)} out of ${scale}`}
+			</span>
+			<span
+				className="scout-rating-strip"
+				aria-hidden="true"
+				style={{
+					width: slots * size + (slots - 1) * GAP,
+					height: size,
+					maskImage: mask,
+					WebkitMaskImage: mask,
+					maskSize: `${size}px ${size}px`,
+					WebkitMaskSize: `${size}px ${size}px`,
+				}}
+			>
+				<span className="scout-rating-strip-fill" style={{ width: Math.round(filled * 10) / 10 }} />
+			</span>
+			{value !== undefined && (
+				<span className="scout-rating-value">
+					{formatRating(value)}
+					{/* Out of five the icons say it already; out of ten they do not. */}
+					{scale !== slots && <span className="scout-rating-scale">/{scale}</span>}
+				</span>
 			)}
 		</span>
 	);

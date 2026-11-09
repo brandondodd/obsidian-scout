@@ -48,6 +48,8 @@ export function entry(overrides: Partial<LibraryEntry> = {}): LibraryEntry {
 		history: [],
 		episodeLog: {},
 		collections: [],
+		moods: [],
+		themes: [],
 		created: NOW.getTime(),
 		modified: NOW.getTime(),
 		frontmatter: {},

@@ -48,9 +48,14 @@ import {
 	Cover,
 	Icon,
 	resolveImage,
+	SectionHead,
 	useLibraryEntries,
 	useSettingsVersion,
 } from "./shared";
+import Threads from "./Threads";
+import { AskAnswer } from "./ask/AskAnswer";
+import { AskBar } from "./ask/AskBar";
+import { useAsk, type Ask } from "./ask/useAsk";
 
 /**
  * The hub.
@@ -75,9 +80,11 @@ import {
 
 export interface HomeViewProps {
 	ctx: ScoutContext;
+	/** Bumped by the "Ask Scout" command to focus the Ask bar. */
+	askNonce?: number;
 }
 
-export default function HomeView({ ctx }: HomeViewProps): React.ReactElement {
+export default function HomeView({ ctx, askNonce = 0 }: HomeViewProps): React.ReactElement {
 	const entries = useLibraryEntries(ctx.library);
 	useSettingsVersion(ctx.settings);
 	const config = ctx.settings.library();
@@ -106,6 +113,9 @@ export default function HomeView({ ctx }: HomeViewProps): React.ReactElement {
 		};
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [entries, config, feedback, enrichment, collections]);
+	const ask = useAsk(ctx, profile);
+	// Only with the AI on and set up; otherwise Home is exactly as it was.
+	const asking = ctx.assistant.ready();
 
 	if (entries.length === 0) {
 		return <EmptyLibrary ctx={ctx} />;
@@ -113,7 +123,9 @@ export default function HomeView({ ctx }: HomeViewProps): React.ReactElement {
 
 	return (
 		<div className="scout-home">
-			<Header ctx={ctx} home={home} entries={entries} />
+			<Header ctx={ctx} home={home} entries={entries} ask={asking ? ask : null} askNonce={askNonce} />
+
+			{asking && <AskAnswer ctx={ctx} ask={ask} />}
 
 			<Row
 				title="On the go"
@@ -165,6 +177,8 @@ export default function HomeView({ ctx }: HomeViewProps): React.ReactElement {
 				showRating
 			/>
 
+			<Threads ctx={ctx} entries={entries} />
+
 			<Taste ctx={ctx} profile={profile} />
 		</div>
 	);
@@ -184,10 +198,15 @@ function Header({
 	ctx,
 	home,
 	entries,
+	ask,
+	askNonce,
 }: {
 	ctx: ScoutContext;
 	home: HomeData;
 	entries: readonly LibraryEntry[];
+	/** The Ask bar's conversation, or null when the AI is off. */
+	ask: Ask | null;
+	askNonce: number;
 }): React.ReactElement {
 	const { summary } = home;
 	const goals = useMemo(
@@ -217,20 +236,26 @@ function Header({
 						.filter(Boolean)
 						.join(" · ")}
 				</p>
+				{ask && <AskBar ctx={ctx} ask={ask} focusNonce={askNonce} />}
 			</div>
 
 			<div className="scout-home-actions">
+				{/* Labels in their own span: a phone keeps Add's and shows the
+				    other two as icons beside it. */}
 				<button
 					className="mod-cta"
 					onClick={() => new ScoutSearchModal(ctx).open()}
 				>
-					<Icon name="search" size={15} /> Add something
+					<Icon name="search" size={15} />
+					<span className="scout-home-action-label">Add something</span>
 				</button>
 				<button onClick={() => void openLibrary(ctx.app)}>
-					<Icon name="library-big" size={15} /> Whole library
+					<Icon name="library-big" size={15} />
+					<span className="scout-home-action-label">Whole library</span>
 				</button>
 				<button onClick={() => void openStats(ctx.app)}>
-					<Icon name="bar-chart-3" size={15} /> Stats
+					<Icon name="bar-chart-3" size={15} />
+					<span className="scout-home-action-label">Stats</span>
 				</button>
 			</div>
 
@@ -309,29 +334,6 @@ function Row({
 				))}
 			</div>
 		</section>
-	);
-}
-
-function SectionHead({
-	title,
-	icon,
-	note,
-	action,
-}: {
-	title: string;
-	icon: string;
-	note?: string;
-	action?: React.ReactNode;
-}): React.ReactElement {
-	return (
-		<div className="scout-home-section-head">
-			<h3>
-				<Icon name={icon} size={14} />
-				{title}
-			</h3>
-			{note && <span className="scout-home-note">{note}</span>}
-			{action}
-		</div>
 	);
 }
 
@@ -567,7 +569,11 @@ function Suggestions({
 						onClick={() => engine.more()}
 					>
 						<Icon name="refresh-cw" size={13} />
-						{loading ? "Looking…" : "Show me others"}
+						{/* Both labels, one shown, so the button keeps its width. */}
+						<span className="scout-swap">
+							<span className={loading ? "is-off" : undefined}>Show me others</span>
+							<span className={loading ? undefined : "is-off"}>Looking…</span>
+						</span>
 					</button>
 				}
 			/>
@@ -586,11 +592,11 @@ function Suggestions({
 			)}
 
 			{error && shown.length === 0 && <p className="scout-error">{error}</p>}
-			{!error && shown.length === 0 && (
+			{/* Not while looking: the waiting cards hold the row then, and a line
+			    above them went away as the cards landed, pulling the row up. */}
+			{!error && !loading && shown.length === 0 && (
 				<p className="scout-message">
-					{loading
-						? "Reading your library…"
-						: "Nothing to suggest yet — add a few things and this fills in."}
+					Nothing to suggest yet — add a few things and this fills in.
 				</p>
 			)}
 
@@ -911,7 +917,7 @@ function Taste({
 	// them was then thrown away — which is why this column came out empty on a
 	// library of a hundred and thirty rated titles.
 	const liked = shownRows(
-		topTraits(profile, ["genre", "keyword"], 12, "liked", TASTE_EVIDENCE),
+		topTraits(profile, ["genre", "keyword", "theme", "mood"], 12, "liked", TASTE_EVIDENCE),
 		6,
 	);
 	const followed = shownRows(
@@ -925,7 +931,7 @@ function Taste({
 		5,
 	);
 	const avoided = shownRows(
-		topTraits(profile, ["genre", "keyword"], 8, "disliked", TASTE_EVIDENCE),
+		topTraits(profile, ["genre", "keyword", "theme", "mood"], 8, "disliked", TASTE_EVIDENCE),
 		4,
 	);
 

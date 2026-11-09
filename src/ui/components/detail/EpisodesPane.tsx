@@ -194,6 +194,7 @@ export function EpisodesPane({
 				<RatingsGrid
 					view={view}
 					entry={entry}
+					run={show.run}
 					onPick={(season, episode) => {
 						view.setSeason(season);
 						setTarget({ season, episode });
@@ -205,7 +206,7 @@ export function EpisodesPane({
 
 	if (show.loading) return <EpisodesSkeleton />;
 	if (show.error) return <p className="scout-error">{show.error}</p>;
-	if (view.episodes.loading) return <EpisodesSkeleton />;
+	if (view.episodes.loading || view.scoresLoading) return <EpisodesSkeleton />;
 	if (view.episodes.error) {
 		return <p className="scout-error">{view.episodes.error}</p>;
 	}

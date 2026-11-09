@@ -1,5 +1,7 @@
 import type { App } from "obsidian";
 import type { Assistant } from "./ai/assistant";
+import type { LibraryTagger } from "./ai/tagRunner";
+import type { ThreadKeeper } from "./ai/threadKeeper";
 import type { DetailService } from "./detail/service";
 import type { CollectionKeeper } from "./library/collector";
 import type { LibraryIndex } from "./library/indexer";
@@ -34,4 +36,8 @@ export interface ScoutContext {
 	detail: DetailService;
 	/** Asks the AI service the person chose, when they have turned it on. */
 	assistant: Assistant;
+	/** Describes notes' moods and themes, when you have allowed it. */
+	tagger: LibraryTagger;
+	/** The threads running through what you love, and the call that writes them. */
+	threads: ThreadKeeper;
 }

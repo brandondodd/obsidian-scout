@@ -5,9 +5,9 @@ import { oneDecimal } from "../../../core/format";
 import { hypeOfItem } from "../../../core/hype";
 import { scoutOfItem } from "../../../core/scout-score";
 import type { LibraryEntry } from "../../../core/library/entry";
-import type { MediaItem, MediaKind, MediaRef } from "../../../core/types";
+import type { MediaItem, MediaKind, MediaRef, Series } from "../../../core/types";
 import { Icon, resolveImage } from "../shared";
-import { SeriesStrip } from "../SeriesStrip";
+import { isShelf, SeriesStrip } from "../SeriesStrip";
 import {
 	Dotted,
 	initials,
@@ -185,7 +185,7 @@ export function MorePane({
 	ctx,
 	extras,
 	source,
-	previous,
+	series,
 	entry,
 	kind,
 	fallbackPeople,
@@ -196,7 +196,8 @@ export function MorePane({
 	extras: ItemExtras;
 	kind: MediaKind;
 	source: MediaRef | undefined;
-	previous: MediaItem | undefined;
+	/** The run this title is part of, fetched with the rest of the record. */
+	series: Series | null;
 	entry: LibraryEntry | undefined;
 	/** Names the note holds, for a note with no source to ask. */
 	fallbackPeople: readonly string[];
@@ -218,12 +219,12 @@ export function MorePane({
 				entry={entry}
 				onClose={onClose}
 			/>
-			{source && (
+			{source && isShelf(series) && (
 				<div className="sd-sec">
 					<SeriesStrip
 						ctx={ctx}
 						source={source}
-						previous={previous}
+						series={series}
 						onClose={onClose}
 					/>
 				</div>

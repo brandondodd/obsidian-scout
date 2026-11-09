@@ -21,6 +21,8 @@ export type ReasonKind =
 	| "neighbour"
 	| "director"
 	| "keyword"
+	| "theme"
+	| "mood"
 	| "genre"
 	| "person"
 	| "studio"
@@ -66,7 +68,9 @@ export const REASON_PRIORITY: Record<ReasonKind, number> = {
 	neighbour: 9,
 	director: 8,
 	keyword: 7,
+	theme: 7,
 	collection: 6.5,
+	mood: 6.4,
 	genre: 6,
 	person: 5,
 	studio: 4,
@@ -87,6 +91,8 @@ const FROM_NAMESPACE: Partial<Record<Namespace, ReasonKind>> = {
 	person: "person",
 	studio: "studio",
 	collection: "collection",
+	mood: "mood",
+	theme: "theme",
 };
 
 /**
@@ -115,6 +121,10 @@ export function reasonIcon(kind: ReasonKind): string {
 		case "keyword":
 		case "genre":
 			return "tag";
+		// Described by Scout's AI, so they carry its mark.
+		case "mood":
+		case "theme":
+			return "sparkles";
 		case "agreement":
 			return "check-check";
 		case "seed":

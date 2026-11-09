@@ -3,6 +3,7 @@ import React from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { ScoutContext } from "../core/context";
 import StatsViewComponent from "./components/StatsView";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 export const STATS_VIEW_TYPE = "scout-stats";
 
@@ -34,7 +35,13 @@ export class ScoutStatsView extends ItemView {
 		container.empty();
 		container.addClass("scout-stats-container");
 		this.root = createRoot(container);
-		this.root.render(React.createElement(StatsViewComponent, { ctx: this.ctx }));
+		this.root.render(
+			React.createElement(
+				ErrorBoundary,
+				{ what: "stats" },
+				React.createElement(StatsViewComponent, { ctx: this.ctx }),
+			),
+		);
 	}
 
 	protected async onClose(): Promise<void> {

@@ -545,6 +545,8 @@ const DESCRIBING = new Set<Namespace>([
 	"studio",
 	"series",
 	"collection",
+	"mood",
+	"theme",
 ]);
 
 /**

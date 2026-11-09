@@ -3,7 +3,7 @@ import { average, HEAT_RAMP, heatBins } from "../../../core/detail/heat";
 import { oneDecimal } from "../../../core/format";
 import type { LibraryEntry } from "../../../core/library/entry";
 import { episodeKey, episodeLabel } from "../../../core/library/episodes";
-import type { EpisodeInfo } from "../../../core/types";
+import type { EpisodeInfo, SeasonInfo } from "../../../core/types";
 import type {
 	EpisodeView,
 	GridSeason,
@@ -45,15 +45,18 @@ export function gridHasScores(
 export function RatingsGrid({
 	view,
 	entry,
+	run,
 	onPick,
 }: {
 	view: EpisodeView;
 	entry: LibraryEntry | undefined;
+	/** The seasons as the record lists them, to draw the grid before it fills. */
+	run: readonly SeasonInfo[];
 	onPick: (season: number, episode: number) => void;
 }): React.ReactElement {
 	const seasons = view.grid.data;
 	if (view.grid.error) return <p className="scout-error">{view.grid.error}</p>;
-	if (!seasons) return <p className="scout-message">Loading ratings…</p>;
+	if (!seasons) return <GridSkeleton run={run} />;
 
 	const scored = seasons.flatMap((season) =>
 		season.episodes.flatMap((episode) => {
@@ -151,6 +154,50 @@ export function RatingsGrid({
 							</tr>
 						);
 					})}
+				</tbody>
+			</table>
+		</div>
+	);
+}
+
+/**
+ * The grid's own shape while every season is fetched: a row a season and a cell
+ * an episode, from the counts the record already has, so only the cells change
+ * when the scores land.
+ */
+function GridSkeleton({
+	run,
+}: {
+	run: readonly SeasonInfo[];
+}): React.ReactElement {
+	const widest = Math.max(1, ...run.map((one) => one.episodeCount ?? 0));
+	const columns = Array.from({ length: widest }, (_, at) => at);
+	return (
+		<div className="sd-heat" aria-busy="true" aria-label="Loading ratings">
+			<table style={{ "--mx": widest } as React.CSSProperties}>
+				<thead>
+					<tr>
+						<th />
+						{columns.map((at) => (
+							<th key={at}>E{at + 1}</th>
+						))}
+						<th>Avg</th>
+					</tr>
+				</thead>
+				<tbody>
+					{run.map((season) => (
+						<tr key={season.number}>
+							<th>S{season.number}</th>
+							{columns.map((at) => (
+								<td key={at}>
+									{at < (season.episodeCount ?? widest) && (
+										<span className="sd-bone sd-cell" />
+									)}
+								</td>
+							))}
+							<td className="sd-avg">–</td>
+						</tr>
+					))}
 				</tbody>
 			</table>
 		</div>

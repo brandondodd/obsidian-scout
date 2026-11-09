@@ -1,6 +1,5 @@
 import { Notice, Plugin } from "obsidian";
 import type { ScoutContext } from "../core/context";
-import { ScoutAskModal } from "../ui/askModal";
 import { isResolvable } from "../core/provider";
 import { ALL_MEDIA_KINDS, MEDIA_KIND_LABELS } from "../core/types";
 import { ScoutDetailModal } from "../ui/detailModal";
@@ -49,11 +48,11 @@ export function registerCommands(plugin: Plugin, ctx: ScoutContext): void {
 
 	plugin.addCommand({
 		id: "ask-library",
-		name: "Ask your library",
+		name: "Ask Scout",
 		checkCallback: (checking) => {
 			// Hidden until switched on and set up in Settings → Scout → AI.
 			if (!ctx.assistant.ready()) return false;
-			if (!checking) new ScoutAskModal(ctx).open();
+			if (!checking) void openHome(plugin.app, { ask: true });
 			return true;
 		},
 	});

@@ -1,4 +1,6 @@
 import { Assistant } from "./core/ai/assistant";
+import { LibraryTagger } from "./core/ai/tagRunner";
+import { ThreadKeeper } from "./core/ai/threadKeeper";
 import { Notice, Plugin } from "obsidian";
 import { registerCommands } from "./commands";
 import { scoreKey } from "./core/scout-score";
@@ -155,18 +157,30 @@ export default class ScoutPlugin extends Plugin {
 			(ref, outlook) => scorer.recordOutlook(ref, outlook),
 		);
 
+		const assistant = new Assistant(http, this.settings, this.app.secretStorage);
+		const threads = new ThreadKeeper(this.settings, library, assistant);
+		// Threads are written from the tags, so a finished library run writes them.
+		const tagger = new LibraryTagger(this.settings, library, mutator, assistant, () => threads.refresh());
+		this.register(() => tagger.dispose());
+		const factory = new NoteFactory(this.app, this.settings, registry);
+		// Tag-on-add. Fire-and-forget: the tagger checks consent and the setting,
+		// and a failure leaves the note untagged rather than unmade.
+		this.register(factory.onCreated((item, note) => tagger.noteCreated(item, note)));
+
 		this.context = {
 			app: this.app,
 			settings: this.settings,
 			registry,
-			factory: new NoteFactory(this.app, this.settings, registry),
+			factory,
 			library,
 			mutator,
 			refresher,
 			enricher,
 			collector,
 			detail,
-			assistant: new Assistant(http, this.settings, this.app.secretStorage),
+			assistant,
+			tagger,
+			threads,
 		};
 
 		// After load, not during it: the first run waits long enough that

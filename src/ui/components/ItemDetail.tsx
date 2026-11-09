@@ -1,4 +1,4 @@
-import { Notice } from "obsidian";
+import { Notice, Platform } from "obsidian";
 import React, {
 	useEffect,
 	useLayoutEffect,
@@ -20,17 +20,19 @@ import { hasEpisodes } from "../episodes";
 import { hasProgressCard, ProgressCard, UpNextCard } from "./detail/Cards";
 import { EpisodesPane } from "./detail/EpisodesPane";
 import { EpisodeToolbar } from "./detail/EpisodeToolbar";
-import { Hero } from "./detail/Hero";
+import { Hero, posterShape } from "./detail/Hero";
 import { MediaPane, MorePane } from "./detail/More";
 import { linkExtras, peopleToShow, present, recordFrom } from "./detail/present";
 import { gridHasScores } from "./detail/RatingsGrid";
-import { CreditSkeleton } from "./detail/Skeleton";
+import { CreditSkeleton, DetailSkeleton } from "./detail/Skeleton";
 import { Tabs } from "./detail/Tabs";
 import { TracksPane } from "./detail/Tracks";
 import { useEpisodeView } from "./detail/useEpisodeView";
 import { useShow } from "./detail/useShow";
 import { Where } from "./detail/Where";
 import ManagePanel from "./ManagePanel";
+import { useSeries } from "./SeriesStrip";
+import { AiTakes } from "./detail/AiTakes";
 import { Icon, resolveImage, useLibraryEntries, useProviderData } from "./shared";
 
 /**
@@ -57,6 +59,11 @@ type TabId = "overview" | "episodes" | "media" | "tracks" | "more";
 
 /** Where the scroll position goes when the tab changes. */
 type Settle = "clamp" | "pin";
+
+/** How long the dialog waits for its sources before showing what it has. */
+const PATIENCE_MS = 2500;
+/** How long, after that, it waits for its pictures to decode. */
+const PICTURE_PATIENCE_MS = 300;
 
 /** Why the row put this up, in full. Marks against it are shown too. */
 function WhyThis({
@@ -136,28 +143,33 @@ export default function ItemDetail({
 		: "";
 	const latest = useRef<{ ref?: MediaRef; item?: MediaItem }>({});
 	latest.current = { ref: source, item };
+	const found = source ? ctx.registry.get(source.providerId) : undefined;
+	const detailer =
+		found && isDetailable(found) && ctx.settings.isProviderEnabled(found.id)
+			? found
+			: undefined;
+	/** The source whose full record has answered, or failed to. */
+	const [enrichedFor, setEnrichedFor] = useState<string | null>(null);
 
 	useEffect(() => {
 		const { ref: mediaRef, item: previous } = latest.current;
-		if (!mediaRef) return;
-		const provider = ctx.registry.get(mediaRef.providerId);
-		if (!provider || !isDetailable(provider)) return;
-		if (!ctx.settings.isProviderEnabled(provider.id)) return;
+		if (!mediaRef || !detailer) return;
 
 		const controller = new AbortController();
-		void provider
+		void detailer
 			.details(mediaRef, { signal: controller.signal, previous })
 			.then((full) => {
 				if (controller.signal.aborted) return;
 				setEnriched(full);
+				setEnrichedFor(sourceKey);
 			})
 			.catch((err) => {
-				if (!isAbortError(err)) {
-					console.warn("Scout: detail fetch failed", err);
-				}
+				if (isAbortError(err) || controller.signal.aborted) return;
+				console.warn("Scout: detail fetch failed", err);
+				setEnrichedFor(sourceKey);
 			});
 		return () => controller.abort();
-	}, [ctx.registry, ctx.settings, sourceKey]);
+	}, [detailer, sourceKey]);
 
 	const detail = useProviderData<DetailResult>(
 		source && view
@@ -213,6 +225,7 @@ export default function ItemDetail({
 		// eslint-disable-next-line react-hooks/exhaustive-deps -- `view` is rebuilt every render
 	}, [extras.scores, detail.data?.scores, sourceRating, providerId, kind, view?.tags, view?.releaseDate, view?.year, outlook.data, entry?.outlook]);
 
+	const series = useSeries(ctx, source, shown);
 	const episodic = hasEpisodes(ctx, source, kind);
 	const show = useShow(ctx, source, entry, kind, episodic);
 	const episodeView = useEpisodeView(
@@ -228,6 +241,89 @@ export default function ItemDetail({
 		() => resolveImage(ctx.app, view?.cover, entry?.path ?? ""),
 		[ctx.app, view?.cover, entry?.path],
 	);
+
+	/**
+	 * Shown whole, once.
+	 *
+	 * The full record, the extras, the outlook and the seasons answer separately,
+	 * and each changes how tall something near the top is: a tagline, a facts
+	 * line that wraps, a synopsis a note did not hold, an Up next card. Shown as
+	 * they came, each one shoved everything under it down while it was being
+	 * read. So the dialog is laid out underneath, hidden, while a placeholder
+	 * holds the frame, and appears in one piece when the last of them answers.
+	 * A source that is slow to answer is not waited on for long: after that the
+	 * sections' own placeholders take over, as they always did.
+	 */
+	const settling =
+		(detailer !== undefined && enrichedFor !== sourceKey) ||
+		loading ||
+		outlook.loading ||
+		series.loading ||
+		show.loading ||
+		(Boolean(entry) && show.nextLoading);
+	const [revealed, setRevealed] = useState(false);
+	const [skeletonGone, setSkeletonGone] = useState(false);
+	const root = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		if (revealed) return;
+		const timer = window.setTimeout(() => setRevealed(true), PATIENCE_MS);
+		return () => window.clearTimeout(timer);
+	}, [revealed]);
+
+	// Once the sources have answered, the pictures in the hidden layout get a
+	// moment to decode, so a logo or poster is not drawn in after the rest.
+	useLayoutEffect(() => {
+		if (revealed || settling) return;
+		const pending = Array.from(scroller.current?.querySelectorAll("img") ?? []).filter(
+			(img) => !img.complete,
+		);
+		if (pending.length === 0) {
+			setRevealed(true);
+			return;
+		}
+		let live = true;
+		void Promise.race([
+			Promise.all(pending.map((img) => img.decode().catch(() => undefined))),
+			new Promise((done) => window.setTimeout(done, PICTURE_PATIENCE_MS)),
+		]).then(() => {
+			if (live) setRevealed(true);
+		});
+		return () => {
+			live = false;
+		};
+	}, [revealed, settling]);
+
+	// Shown, the dialog comes in as one piece. What was laid out underneath has
+	// already played its own entrance unseen, so each of those is finished rather
+	// than fading a second time inside the dialog's own fade; only what arrives
+	// later animates. A placeholder already on screen fades out over the
+	// finished dialog instead of vanishing and leaving a blank frame behind it.
+	useLayoutEffect(() => {
+		if (!revealed) return;
+		const box = scroller.current;
+		const skeleton = root.current?.querySelector<HTMLElement>(".sd-skeleton");
+		const shown = skeleton ? Number(getComputedStyle(skeleton).opacity) : 0;
+		if (box) {
+			for (const animation of box.getAnimations({ subtree: true })) {
+				const own = animation.effect instanceof KeyframeEffect && animation.effect.target === box;
+				if (own && shown < 0.02) continue;
+				if (animation.effect?.getComputedTiming().endTime === Infinity) continue;
+				animation.finish();
+			}
+		}
+		if (!skeleton || shown < 0.02) {
+			setSkeletonGone(true);
+			return;
+		}
+		for (const animation of skeleton.getAnimations()) animation.cancel();
+		const out = skeleton.animate([{ opacity: shown }, { opacity: 0 }], {
+			duration: 200,
+			easing: "ease-out",
+			fill: "forwards",
+		});
+		out.onfinish = () => setSkeletonGone(true);
+		return () => out.cancel();
+	}, [revealed]);
 
 	// Offered while the seasons load, so the tab is there when they land rather
 	// than pushing in between the others.
@@ -332,7 +428,7 @@ export default function ItemDetail({
 		}
 	};
 
-	const overview = (
+	const about = (
 		<>
 			{(view.description || extras.credit || loading) && (
 				<div className="sd-body">
@@ -349,6 +445,11 @@ export default function ItemDetail({
 				</div>
 			)}
 			<WhyThis reasons={reasons} />
+			<AiTakes ctx={ctx} item={shown} entry={entry} view={view} />
+		</>
+	);
+	const yours = (
+		<>
 			{entry && hasEpisodeTab && (
 				<UpNextCard
 					entry={entry}
@@ -367,6 +468,18 @@ export default function ItemDetail({
 					your thoughts.
 				</p>
 			)}
+		</>
+	);
+	// On a phone what you came to do — tick the episode, set the status, rate
+	// it — goes first. Under the synopsis it was a screen and a half of
+	// scrolling away, every time. Something not in the library yet has nothing
+	// of yours to show, so it reads as it does on a desktop. The same sections
+	// either way; only the order changes.
+	const yoursFirst = Platform.isPhone && Boolean(entry);
+	const overview = (
+		<>
+			{yoursFirst ? yours : about}
+			{yoursFirst ? about : yours}
 			<Where
 				availability={extras.availability}
 				region={ctx.detail.region()}
@@ -376,8 +489,19 @@ export default function ItemDetail({
 	);
 
 	return (
-		<div className="sd-root scout-detail">
-			<div className="sd-scroll" ref={scroller} onScroll={updateStuck}>
+		<div className={`sd-root scout-detail${revealed ? "" : " sd-pending"}`} ref={root}>
+			{!skeletonGone && (
+				<DetailSkeleton
+					title={view.title}
+					cover={cover}
+					shape={posterShape(view.kind, extras)}
+				/>
+			)}
+			<div
+				className={`sd-scroll${revealed ? " sd-in" : ""}`}
+				ref={scroller}
+				onScroll={updateStuck}
+			>
 				<div ref={hero}>
 					<Hero
 						ctx={ctx}
@@ -441,7 +565,7 @@ export default function ItemDetail({
 							ctx={ctx}
 							extras={extras}
 							source={source}
-							previous={shown}
+							series={series.data}
 							entry={entry}
 							kind={kind}
 							fallbackPeople={view.people}

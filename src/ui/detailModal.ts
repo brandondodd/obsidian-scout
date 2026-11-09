@@ -5,6 +5,8 @@ import type { ScoutContext } from "../core/context";
 import type { Reason } from "../core/library/reasons";
 import type { MediaItem } from "../core/types";
 import ItemDetail from "./components/ItemDetail";
+import { shapeScoutModal } from "./modalShape";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 /** Obsidian modal shell hosting the item detail view. */
 export class ScoutDetailModal extends Modal {
@@ -31,21 +33,24 @@ export class ScoutDetailModal extends Modal {
 	}
 
 	onOpen(): void {
-		this.modalEl.addClass("scout-modal");
-		this.modalEl.addClass("scout-detail-modal");
+		shapeScoutModal(this, "scout-detail-modal");
 		// The view renders its own title block, so the header only holds the
 		// close button.
 		this.titleEl.setText("");
 
 		this.root = createRoot(this.contentEl);
 		this.root.render(
-			React.createElement(ItemDetail, {
-				ctx: this.ctx,
-				item: this.target.item,
-				entryPath: this.target.entryPath,
-				reasons: this.target.reasons,
-				onClose: () => this.close(),
-			}),
+			React.createElement(
+				ErrorBoundary,
+				{ what: "details" },
+				React.createElement(ItemDetail, {
+					ctx: this.ctx,
+					item: this.target.item,
+					entryPath: this.target.entryPath,
+					reasons: this.target.reasons,
+					onClose: () => this.close(),
+				}),
+			),
 		);
 	}
 

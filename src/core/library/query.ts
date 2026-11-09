@@ -38,6 +38,8 @@ export interface LibraryQuery {
 	people: string[];
 	/** Every one of these collections. */
 	collections: string[];
+	/** Any of these moods, from the notes' own `moods` property. */
+	moods: string[];
 	favoritesOnly: boolean;
 	/**
 	 * On the default scale, compared proportionally — 4 out of 5 keeps a film
@@ -70,6 +72,7 @@ export function emptyQuery(config: Pick<LibraryConfig, "sortBy" | "groupBy">): L
 		notTags: [],
 		people: [],
 		collections: [],
+		moods: [],
 		favoritesOnly: false,
 		minRating: 0,
 		rated: "any",
@@ -144,6 +147,13 @@ export function queryRule(query: QueryFilters): RuleGroup {
 	for (const name of query.collections) {
 		conditions.push({ field: "collection", op: "has", value: name });
 	}
+	if (query.moods.length > 0) {
+		if (joinable(query.moods)) {
+			conditions.push({ field: "mood", op: "has", value: query.moods.join(", ") });
+		} else {
+			anyOf(query.moods, (value) => ({ field: "mood", op: "has", value }));
+		}
+	}
 	if (query.favoritesOnly) conditions.push({ field: "favorite", op: "is", value: "true" });
 	if (query.minRating > 0) {
 		conditions.push({ field: "rating", op: "gte", value: String(query.minRating) });
@@ -190,6 +200,7 @@ export function activeFilterCount(query: QueryFilters): number {
 		query.notTags.length +
 		query.people.length +
 		query.collections.length +
+		query.moods.length +
 		(query.favoritesOnly ? 1 : 0) +
 		(query.minRating > 0 || query.rated !== "any" ? 1 : 0) +
 		(query.minSource > 0 ? 1 : 0) +

@@ -869,6 +869,27 @@ export function exactScoutOfEntry(
 	entry: ScoredEntry,
 	now: number = Date.now(),
 ): number | undefined {
+	const hour = Math.floor(now / HOUR);
+	const kept = exactScouts.get(entry);
+	if (kept?.hour === hour) return kept.value;
+	const value = computeExactScout(entry, now);
+	exactScouts.set(entry, { hour, value });
+	return value;
+}
+
+/**
+ * Each note's score, worked out once.
+ *
+ * Sorting a shelf, shelving it and drawing its cards each ask every note for
+ * its score, the sort many times over, and each answer blends every source's
+ * curve. A note is a fresh object whenever it changes, so keying on the object
+ * never hands back a score from before an edit; the hour is there because a
+ * score settles as a release ages, and a view left open should see it move.
+ */
+const HOUR = 3_600_000;
+const exactScouts = new WeakMap<ScoredEntry, { hour: number; value: number | undefined }>();
+
+function computeExactScout(entry: ScoredEntry, now: number): number | undefined {
 	const facts: TitleFacts = {
 		...(entry.releaseDate ? { releaseDate: entry.releaseDate } : {}),
 		...(entry.year !== undefined ? { year: entry.year } : {}),

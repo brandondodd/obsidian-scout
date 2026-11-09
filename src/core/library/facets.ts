@@ -118,6 +118,15 @@ export function peopleFacets(entries: readonly LibraryEntry[]): Facet[] {
 	return counted(entries.map((entry) => entry.people));
 }
 
+/** Moods in use, most common first. */
+export function moodFacets(entries: readonly LibraryEntry[]): Facet[] {
+	return counted(entries.map((entry) => entry.moods));
+}
+
+export function themeFacets(entries: readonly LibraryEntry[]): Facet[] {
+	return counted(entries.map((entry) => entry.themes));
+}
+
 export function collectionFacets(entries: readonly LibraryEntry[]): Facet[] {
 	return counted(entries.map((entry) => entry.collections));
 }

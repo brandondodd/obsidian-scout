@@ -12,6 +12,7 @@ import type { MdbListClient } from "../../providers/mdblist/client";
 import { bookReadings, RATINGS_PER_REQUEST } from "../../providers/openlibrary/ratings";
 import type { LibraryEntry } from "./entry";
 import type { LibraryIndex } from "./indexer";
+import { scheduleRuns } from "./schedule";
 
 /**
  * Keeping the library's Scout scores the same as the detail dialog's.
@@ -195,7 +196,6 @@ export function readingsFor(title: TitleScores, sourceRating: number | undefined
 /* ------------------------------------------------------------------ runner */
 
 export class ScoreKeeper {
-	private timer: number | null = null;
 	private running = false;
 
 	constructor(
@@ -213,17 +213,7 @@ export class ScoreKeeper {
 	) {}
 
 	start(plugin: Plugin): void {
-		this.timer = window.setTimeout(() => {
-			void this.runDue();
-			this.timer = window.setInterval(() => void this.runDue(), RUN_EVERY_MS);
-			plugin.register(() => {
-				if (this.timer !== null) window.clearInterval(this.timer);
-			});
-		}, FIRST_RUN_DELAY_MS);
-		plugin.register(() => {
-			if (this.timer !== null) window.clearTimeout(this.timer);
-			this.timer = null;
-		});
+		scheduleRuns(plugin, FIRST_RUN_DELAY_MS, RUN_EVERY_MS, () => void this.runDue());
 	}
 
 	/** Files the readings behind a title's blend. */

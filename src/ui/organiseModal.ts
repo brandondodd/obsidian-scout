@@ -3,6 +3,7 @@ import React from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { ScoutContext } from "../core/context";
 import Organise from "./components/Organise";
+import { shapeScoutModal } from "./modalShape";
 
 /** Obsidian modal shell hosting the views and collections editor. */
 export class ScoutOrganiseModal extends Modal {
@@ -19,8 +20,7 @@ export class ScoutOrganiseModal extends Modal {
 	}
 
 	onOpen(): void {
-		this.modalEl.addClass("scout-modal");
-		this.modalEl.addClass("scout-organise-modal");
+		shapeScoutModal(this, "scout-organise-modal");
 		this.titleEl.setText("Views and collections");
 
 		this.root = createRoot(this.contentEl);

@@ -85,9 +85,22 @@ Each title is looked up at its source, so imported notes come out of the same te
 
 **Open stats** (or **Stats** on the home page) shows, for any year or all time and any type: what you finished and when, a calendar of finish days, time spent where your notes record runtimes, pages, or hours, how you rate, your top genres and people against your own average, rewatches, what you gave up on, and what has waited longest. Set a yearly goal per type there — "52 books" — and its progress also shows on the home page. Every chart can be read as a table instead.
 
-## Ask your library
+## Ask Scout
 
-Off by default. Turn it on under **Settings → Scout → AI**, pick a service, then run **Ask your library** and type a question — "sci-fi I loved from the 90s", "books I gave up on", "anything with Villeneuve I haven't finished". The model turns the question into the library's own filters, and the library opens filtered to the answer. What it suggests is checked against your library first; anything with no match (a genre you never use, say) is left out and named.
+Off by default. Turn it on under **Settings → Scout → AI** and pick a service. An **Ask** bar then appears under the greeting on Home (the **Ask Scout** command puts the cursor there). Nothing is sent until you press Enter.
+
+- **Find** — "sci-fi I loved from the 90s", "books I gave up on", "anything with Villeneuve I haven't finished". The model turns the question into the library's own filters, and the library opens filtered to the answer. What it suggests is checked against your library first; anything with no match (a genre you never use, say) is left out and named. In the library itself, type in the search box and select the sparkles button to do the same in place.
+- **Pick** (needs **Share your library**) — "what should I watch tonight, I've got 90 minutes and I'm tired", "something short to read". Three to six things from your own shelf — not started, on the go, or paused — each with a one-line reason. Where your notes record runtimes, pages or episodes, the model sees them.
+- **Discover** (needs **Share your library**) — "a film like Arrival I haven't seen", "books for someone who loved Hades". New titles, each looked up at your enabled sources before it's shown; anything no source can find, or that you already have, is dropped, and a footnote says how many. Found cards have the same add, thumbs up and not-for-me buttons as **You might like**, and teach it the same way.
+
+While an answer is showing, the bar refines it — "not that one, something shorter", "but a book". The earlier question and what was shown go along with the new one. Dismissing the answer (✕ or Escape) forgets the conversation; nothing is saved.
+
+On a detail page (needs **Share your library**):
+
+- **What would I make of this?** — for search results, suggestions, and things you haven't started or have paused: a fit (strong, good, mixed, long shot), a headline, and two or three spoiler-free sentences tied to what you loved or disliked.
+- **If you loved this…** — for something at the top of your rating scale, or a favourite: titles of other kinds that share what made it work, looked up at your sources and shown as small cards you can add.
+
+Both stay a single quiet line until you select it. Answers are kept for 30 days in Scout's `cache.json`, so reopening the page shows them instantly; asking with another service or model asks again. **Settings → Scout → AI → Saved answers** clears them.
 
 Services:
 
@@ -98,12 +111,24 @@ Services:
 
 Choose a model by id, or **Load models** to pick from the service's own list. Gemini and Grok subscriptions can't be used here: Google doesn't allow its consumer plans in other apps, and xAI has no sign-in for third-party apps. Use a key for those.
 
+A **Fast model** can be set beside the main one, for tagging and for Find questions asked without sharing (and the library's sparkles); left empty, the main model does everything. With sharing on, an Ask question goes to the main model in one call, which decides whether it's a Find, Pick or Discover and answers it. The take and **If you loved this…** use the main model.
+
+### Moods, themes and threads
+
+A second switch, **Share your library** (off by default, under the same settings once AI is on), lets the AI look at your titles:
+
+- **Tagging** describes each title with two to four moods from a fixed list (cozy, tense, melancholy…) and a few themes (grief, heists, first contact…). They are written into the note's `moods` and `themes` properties — only when those are empty, never over anything already there — so you can read, correct, query, or delete them like any other property. Themes are matched to a canonical list; a theme that matches nothing stays on the note for you to read but isn't used for suggestions. **Tag your library** runs on desktop only, shows how many calls it will take first, does at most 1,000 titles a run, and can be stopped and picked up again. **Retag all** empties and refills every note's moods and themes, including ones you edited — it asks first. Each note's dialog has a **Retag** button for just that note.
+- **Tag new additions** (on once you've tagged your library, otherwise off) describes each title you add through Scout — from search, suggestions, a link, or an import — with one small call shortly after the note is made. It never delays or blocks the note.
+- **Threads** are a few named strands running through what you love — "quiet grief, told gently" — written by the main model from the moods and themes of the titles you rated highly, and shown on Home. Which notes belong to a thread is worked out on your device from their properties, so threads work offline and new notes join by themselves. Threads are written after a tagging run or when you select **Refresh threads**; pin one to keep it, hide one you don't want.
+
+Moods also appear as a **Mood** filter in the library, and both feed your taste for suggestions. Nothing AI-related runs in the background or when a page opens, apart from tagging new additions as described.
+
 ## Commands
 
 
 - **Open library** — browse and manage everything you have
 - **Open stats** — what you finished, when, and what you made of it
-- **Ask your library** — a question in plain words, answered with the library's filters (only when turned on)
+- **Ask Scout** — opens Home with the cursor in the Ask bar (only when AI is turned on)
 - **Evaluate suggestions** — scores how well suggestions fit your own library, so a change to the recommender can be judged by a number
 - **Import library…** — bring in a Letterboxd, Goodreads, StoryGraph, or AniList history
 - **Search all sources** — one modal across every enabled source
@@ -176,7 +201,7 @@ pnpm run build
 
 ### Measuring suggestions
 
-Run **Evaluate suggestions** before and after changing the recommender. The *taste check* hides a fifth of your rated titles at a time and measures how often a liked one outscores a disliked one (AUC; 0.5 is chance), offline. The *suggestion check* hides your ten latest liked finishes and counts how many the engine suggests back. It asks your sources once and keeps their answers in `eval-recordings.json` (gitignored); turn on **Use kept answers only** to replay them offline, so two runs compare the recommender and not the sources' moods.
+Run **Evaluate suggestions** before and after changing the recommender. The *taste check* hides a fifth of your rated titles at a time and measures how often a liked one outscores a disliked one (AUC; 0.5 is chance), offline. The *suggestion check* hides your ten latest liked finishes and counts how many the engine suggests back. It asks your sources once and keeps their answers in `eval-recordings.json` (gitignored); turn on **Use kept answers only** to replay them offline, so two runs compare the recommender and not the sources' moods. Once any note has moods or themes, the taste check also reports its scores without them, which is how their weights should be judged.
 
 ### Live reload
 
@@ -201,7 +226,14 @@ The library is built entirely from notes already in your vault. Scout contacts a
 - for **background refresh** (on by default, **Settings → Scout → Background**): re-checks notes that already record a source id, and updates only facts the source owns
   - the same switch lets Scout keep the library's Scout scores current: Open Library is asked for each book note's rating count (work ids only, fifty to a request), and, if you set up MDBList, MDBList for each film and show note's scores (TMDB ids only). These go into Scout's own cache, never into your notes
 - for **background reading-up** (off by default, same tab): fetches keywords, cast, and crew for linked notes to improve suggestions
-- when you **ask your library** (off by default, **Settings → Scout → AI**): your question, and the names of the types, statuses, genres, and collections your library uses, go to the service you chose — Anthropic through your own Claude Code, OpenAI with a ChatGPT plan, the service whose key you added, or the address you gave. Titles, notes, ratings, and people's names in your library are never sent; a name you type in the question is sent as typed. That service's own privacy policy applies to what it receives.
+- when you **ask Scout** (off by default, **Settings → Scout → AI**) without sharing your library, or use the library's sparkles: your question, and the names of the types, statuses, genres, and collections your library uses, go to the service you chose — Anthropic through your own Claude Code, OpenAI with a ChatGPT plan, the service whose key you added, or the address you gave. Titles, notes, ratings, and people's names in your library are never sent; a name you type in the question is sent as typed. A follow-up also sends the earlier question and the one-line summary of its answer. That service's own privacy policy applies to what it receives.
+- only if you also turn on **Share your library** (off by default, same tab):
+  - **tagging** — whether you start it, retag a note, or have **Tag new additions** on — sends each title's name, year, type, genres, first three credited people, and the source's short description (trimmed to a few lines). The answer is written into the note's `moods` and `themes`, and only into empty ones
+  - **threads** send the titles you rated highly or favourited, each with its moods and themes, and how often each mood and theme occurs among them. The threads are kept in Scout's settings, not in your notes
+  - neither ever sends the text of your notes, your thoughts, your ratings themselves, your statuses, or file names
+  - **Ask** (Pick, Discover, and a Find asked with sharing on) sends, with your question and the filter names: a summary of your taste (the genres, moods, themes and people you lean towards or away from, and your threads' names); up to 40 titles you loved and 12 you finished lately, with your ratings out of ten; up to 15 you disliked or gave up on, and up to 15 suggestions you turned down; and your shelf — up to 150 things not started, on the go or paused — with each one's year, type, status, genres, moods and themes, length (runtime, pages, episodes, progress) where the note has it, and whether it's a favourite. A follow-up adds the earlier questions, summaries, and titles shown. Titles the model names for Discover are then searched for at your enabled sources, like a search you typed
+  - **What would I make of this?** and **If you loved this…** send the same taste summary and lists (not the shelf), plus the title's name, year, type, genres, up to four people, moods and themes, the source's score, and its description trimmed to a few lines. **If you loved this…** then searches your sources for the titles it names. Answers are kept for 30 days in `cache.json` in Scout's plugin folder and are cleared with **Saved answers**
+  - none of these ever send the text of your notes, your thoughts, or file names
 - when you run an **import**: each title's name, year, author, and ISBN is searched for at its source (or, for AniList, the username you typed is looked up). The export file itself is read on your device and never sent anywhere. Stats never use the network.
 
 Opening the detail dialog asks that item's own source for its cast, availability, and so on. A source you have turned off is not contacted, even for a note that came from it. Web links are not fetched again when opened. MDBList, OMDb, and Apple are contacted only if you have set them up, as listed under [Optional extras](#optional-extras). MusicBrainz is off until you enable it under **Sources**, and is limited to one request a second as it asks.

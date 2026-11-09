@@ -37,6 +37,8 @@ function entry(
 		history: [],
 		episodeLog: {},
 		collections: [],
+		moods: [],
+		themes: [],
 		created: 0,
 		modified: 0,
 		frontmatter: {},

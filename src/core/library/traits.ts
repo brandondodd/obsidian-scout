@@ -1,3 +1,4 @@
+import { snapMood, snapTheme } from "../ai/vocabulary";
 import { canonicalGenres } from "../genres/genres";
 import { sourceKey, type MediaItem, type MediaKind } from "../types";
 // Types only: `enrich.ts` reaches back here through `recommend.ts`, and a
@@ -37,7 +38,11 @@ export type Namespace =
 	| "decade"
 	| "language"
 	| "runtime"
-	| "collection";
+	| "collection"
+	/** From the note's `moods`, always one of Scout's fixed moods. */
+	| "mood"
+	/** From the note's `themes`, only those that snap to Scout's canonical list. */
+	| "theme";
 
 /**
  * Deliberately not a plain string, so a raw genre name cannot be passed where
@@ -82,6 +87,11 @@ export const NAMESPACE_PRIOR: Record<Namespace, number> = {
 	person: 1.2,
 	studio: 1.5,
 	keyword: 1.8,
+	theme: 1.8,
+	// Sixty-odd moods spread over a whole library are shared more often than
+	// themes are, so a mood needs a little more evidence than a theme before
+	// it is believed — still well short of a genre.
+	mood: 2,
 	collection: 2,
 	genre: 2.5,
 	decade: 3,
@@ -95,6 +105,8 @@ export const NAMESPACE_WEIGHT: Record<Namespace, number> = {
 	series: 1.4,
 	director: 1.3,
 	keyword: 1.1,
+	theme: 1.1,
+	mood: 0.9,
 	person: 0.9,
 	collection: 0.8,
 	studio: 0.7,
@@ -111,6 +123,8 @@ export const NAMESPACE_WEIGHT: Record<Namespace, number> = {
  */
 export const NAMESPACE_CAP: Record<Namespace, number> = {
 	keyword: 4,
+	theme: 3,
+	mood: 2,
 	genre: 3,
 	person: 3,
 	director: 2,
@@ -133,6 +147,19 @@ export interface TraitOptions {
 	manualCollections?: ReadonlySet<string>;
 	/** What the sources have said, beyond what the notes record. */
 	enrichment?: Readonly<EnrichmentCache>;
+	/**
+	 * Whether a note's moods and themes count. On unless set to false — the
+	 * switch exists so the evaluation can measure what they add.
+	 */
+	aiTraits?: boolean;
+}
+
+/** Namespaces that come from AI tagging, which `aiTraits: false` leaves out. */
+const AI_NAMESPACES: ReadonlySet<Namespace> = new Set<Namespace>(["mood", "theme"]);
+
+function isAiTrait(trait: Trait): boolean {
+	const ns = parseTrait(trait.key)?.ns;
+	return ns !== undefined && AI_NAMESPACES.has(ns);
 }
 
 /**
@@ -265,6 +292,12 @@ function ownTraits(entry: LibraryEntry): Trait[] {
 		counted += 1;
 	}
 	addDecade(bag, entry.year);
+	// Moods off the fixed list, and themes only where they snap to the
+	// canonical one. A loose theme stays on the note for you to read, but
+	// "the weight of inherited silence" said once is not something a taste
+	// can learn from — it would never meet a second title.
+	for (const word of entry.moods) bag.add("mood", snapMood(word));
+	for (const word of entry.themes) bag.add("theme", snapTheme(word));
 
 	ENTRY_TRAITS.set(entry, bag.out);
 	return bag.out;
@@ -274,7 +307,8 @@ export function traitsOfEntry(
 	entry: LibraryEntry,
 	options: TraitOptions = {},
 ): Trait[] {
-	const own = ownTraits(entry);
+	const all = ownTraits(entry);
+	const own = options.aiTraits === false ? all.filter((one) => !isAiTrait(one)) : all;
 	const harvest = entry.ref
 		? options.enrichment?.[sourceKey(entry.ref)]
 		: undefined;

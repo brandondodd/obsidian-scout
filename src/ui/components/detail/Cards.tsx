@@ -20,17 +20,38 @@ import { UpNextSkeleton } from "./Skeleton";
 
 /** The cards under the synopsis: where you are, and what is next. */
 
+function MarkedText({ show }: { show: Show }): React.ReactElement | null {
+	if (!show.lastMarked) return null;
+	return (
+		<span>
+			Marked {episodeCode(show.lastMarked.id, show.flat)}{" "}
+			<button className="sd-undo" onClick={show.undo}>
+				Undo
+			</button>
+		</span>
+	);
+}
+
+/** The undo on a card of its own, when nothing is left up next. */
 function MarkedLine({ show }: { show: Show }): React.ReactElement | null {
 	if (!show.lastMarked) return null;
 	return (
 		<div className="sd-cfoot">
-			<span>
-				Marked {episodeCode(show.lastMarked.id, show.flat)}{" "}
-				<button className="sd-undo" onClick={show.undo}>
-					Undo
-				</button>
-			</span>
+			<MarkedText show={show} />
 		</div>
+	);
+}
+
+/**
+ * The undo beside the card's buttons. A line of its own under them grew the
+ * card the moment an episode was marked, and shoved everything below it down.
+ */
+function MarkedNote({ show }: { show: Show }): React.ReactElement | null {
+	if (!show.lastMarked) return null;
+	return (
+		<span className="sd-marked">
+			<MarkedText show={show} />
+		</span>
 	);
 }
 
@@ -106,6 +127,7 @@ export function UpNextCard({
 							<Icon name="check" size={15} /> Mark watched
 						</button>
 						{all}
+						<MarkedNote show={show} />
 					</div>
 				</div>
 			) : (
@@ -124,10 +146,12 @@ export function UpNextCard({
 							{relativeDay(episode.airDate, today)}
 						</div>
 					)}
-					<div className="sd-acts">{all}</div>
+					<div className="sd-acts">
+						{all}
+						<MarkedNote show={show} />
+					</div>
 				</div>
 			)}
-			<MarkedLine show={show} />
 		</div>
 	);
 }

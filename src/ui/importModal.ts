@@ -3,6 +3,7 @@ import React from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { ScoutContext } from "../core/context";
 import ImportFlow from "./components/ImportFlow";
+import { shapeScoutModal } from "./modalShape";
 
 /**
  * Obsidian modal shell hosting the import flow.
@@ -20,7 +21,7 @@ export class ScoutImportModal extends Modal {
 
 	onOpen(): void {
 		this.titleEl.setText("Import library");
-		this.modalEl.addClass("scout-modal", "scout-import-modal");
+		shapeScoutModal(this, "scout-import-modal");
 		this.root = createRoot(this.contentEl);
 		this.root.render(
 			React.createElement(ImportFlow, {

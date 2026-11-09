@@ -24,6 +24,7 @@ export type FilterCategory =
 	| "added"
 	| "person"
 	| "collection"
+	| "mood"
 	| "favourite";
 
 export interface FilterChip {
@@ -107,6 +108,7 @@ export function filterChips(filters: LensFilters): FilterChip[] {
 			collections: filters.collections.filter((one) => one !== name),
 		});
 	}
+	if (filters.moods.length > 0) add("mood", `Feels ${either(filters.moods)}`, { moods: [] });
 	if (filters.favoritesOnly) add("favourite", "Favourites", { favoritesOnly: false });
 	return out;
 }

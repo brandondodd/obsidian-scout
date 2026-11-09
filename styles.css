@@ -45,6 +45,18 @@
 	border: 0;
 }
 
+/* A label that changes while it works, e.g. "Refresh" and "Writing…": both are
+   laid in one cell and one hidden, so the button is as wide as the longer. */
+.scout-swap {
+	display: inline-grid;
+}
+.scout-swap > * {
+	grid-area: 1 / 1;
+}
+.scout-swap > .is-off {
+	visibility: hidden;
+}
+
 .scout-icon {
 	display: inline-flex;
 	align-items: center;
@@ -182,6 +194,80 @@
 	border-radius: var(--scout-radius, 6px);
 	background: var(--background-secondary);
 }
+/* A cover's frame holds the shape and the waiting shimmer; the picture comes
+   into focus inside it, blurred and a touch large, settling sharp and to size.
+   The frame clips it, so the overscale never spills past the rounded corners. */
+.scout-cover-frame {
+	position: relative;
+	overflow: hidden;
+	isolation: isolate;
+	/* An entrance redraws only its own cover, never the shelf around it. */
+	contain: paint;
+}
+.scout-cover-frame::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	background-color: var(--background-modifier-hover, var(--background-secondary));
+	transition: opacity 400ms ease-out 150ms;
+}
+/* A slow breath, for a cover that has kept you waiting (see `SLOW_MS`). Not a
+   sweep of light: that moved a gradient, which repainted every waiting cover
+   every frame, and each repaint made the browser sort out again how the shelf
+   sits over the covers coming into focus. Opacity repaints nothing. */
+.scout-cover-frame.is-loading[data-slow]::before {
+	animation: scout-cover-breathe 900ms ease-in-out infinite alternate;
+}
+.scout-cover-frame:not(.is-loading)::before {
+	opacity: 0;
+	animation: none;
+}
+@keyframes scout-cover-breathe {
+	from { opacity: 1; }
+	to { opacity: 0.45; }
+}
+.scout-cover-img {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	opacity: 0;
+	filter: blur(10px) saturate(1.3);
+	transform: scale(1.1);
+	transition:
+		opacity 420ms cubic-bezier(0.16, 1, 0.3, 1),
+		filter 560ms cubic-bezier(0.16, 1, 0.3, 1),
+		transform 800ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+/* The frame's corners, not the 8px Obsidian gives every image (with a rule
+   that outranks a class alone): the two curves disagreed and left a sliver of
+   the frame showing at each corner. */
+.scout-cover-frame > img.scout-cover-img {
+	border-radius: inherit;
+}
+.scout-cover-frame.is-ready .scout-cover-img,
+.scout-cover-frame.is-shown .scout-cover-img {
+	opacity: 1;
+	filter: none;
+	transform: none;
+}
+/* Seen already this session: shown as it was left, with nothing replayed. */
+.scout-cover-frame.is-shown .scout-cover-img,
+.scout-cover-frame.is-shown::before {
+	transition: none;
+	animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+	.scout-cover-frame.is-loading[data-slow]::before {
+		animation: none;
+	}
+	.scout-cover-img {
+		filter: none;
+		transform: none;
+		transition: opacity 200ms ease-out;
+	}
+}
 .scout-cover-empty {
 	display: flex;
 	align-items: center;
@@ -221,6 +307,25 @@
 }
 .scout-rating-glyph svg.is-filled path {
 	fill: var(--text-accent);
+}
+/* A read-only row as one strip: the icons are its mask, repeated one gap apart,
+   and the fill is a bar cut by the same mask. */
+.scout-rating-strip {
+	position: relative;
+	display: inline-block;
+	flex-shrink: 0;
+	overflow: hidden;
+	background: var(--background-modifier-border-hover);
+	mask-repeat: space no-repeat;
+	-webkit-mask-repeat: space no-repeat;
+	mask-position: 0 0;
+	-webkit-mask-position: 0 0;
+}
+.scout-rating-strip-fill {
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: 0;
+	background: var(--text-accent);
 }
 .scout-rating-fill {
 	position: absolute;
@@ -1158,6 +1263,12 @@
 .sd-root .sd-prog.sd-done>div {
 	background:var(--sd-gr);
 }
+.sd-root .sd-marked {
+	margin-left:auto;
+	font-size:12.5px;
+	color:var(--sd-mu);
+	white-space:nowrap;
+}
 .sd-root .sd-undo {
 	color:var(--sd-st);
 	background:none;
@@ -1349,9 +1460,13 @@
 .sd-root .sd-md.sd-empty {
 	color:var(--sd-fa);
 }
+/* Grows with what is written, as the rendered text it stands in for does,
+   rather than scrolling inside a fixed box. */
 .sd-root textarea.sd-md {
+	display:block;
 	min-height:130px;
-	resize:vertical;
+	field-sizing:content;
+	resize:none;
 	font-family:inherit;
 	outline:none;
 	border-color:var(--sd-ac);
@@ -1927,6 +2042,9 @@
 	line-height:1;
 	margin-right:4px;
 	vertical-align:-1px;
+}
+.sd-root .sd-heat .sd-cell {
+	height:36px;
 }
 .sd-root .sd-heat td.sd-avg {
 	font-size:13px;
@@ -2568,6 +2686,10 @@
 	margin-top:18px;
 }
 .sd-root .sd-pane {
+	/* Its own formatting context: a first child's top margin stays inside it.
+	   Collapsing through, it moved the pane by however much the placeholder's
+	   margin differed from the content's when one replaced the other. */
+	display:flow-root;
 	padding-bottom:24px;
 }
 .sd-root .sd-pane>.sd-ep-page {
@@ -2665,6 +2787,14 @@
 }
 .sd-root .sd-watchbar span {
 	min-width: 0;
+}
+/* One line each, so a long service name cannot stretch the poster's column. */
+.sd-root .sd-watchbar small,
+.sd-root .sd-watchbar b {
+	display: block;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
 }
 .sd-root .sd-logo-pad {
 	object-fit: contain;
@@ -2811,12 +2941,6 @@
 }
 .sd-root .sd-ctl .scout-progress-bar {
 	flex: 1;
-}
-
-body.is-phone .scout-detail-modal {
-	width: 100%;
-	height: 100%;
-	border-radius: 0;
 }
 
 /* The fold-out series shelf keeps its own look, in the tab's margins. */
@@ -3614,6 +3738,12 @@ h3.scout-section-title {
 	align-items: start;
 	gap: 14px;
 }
+/* The library's shelves size their cards from the view's card size, which the
+   shelf sets as a variable. The other grids — the hub's rails, a series, the
+   AI's picks — state their own columns. */
+.scout-library .scout-entries-grid {
+	grid-template-columns: repeat(auto-fill, minmax(var(--scout-card-size, 150px), 1fr));
+}
 .scout-entries-list {
 	display: flex;
 	flex-direction: column;
@@ -3780,9 +3910,11 @@ h3.scout-section-title {
 	width: 21px;
 	height: 21px;
 	border-radius: var(--scout-radius, 6px);
-	background: rgba(0, 0, 0, 0.6);
+	/* A shade darker in place of a blur behind it: a backdrop filter is its own
+	   compositing layer and a readback of the cover under it, redone on every
+	   frame that cover changes, on every card on the shelf. */
+	background: rgba(0, 0, 0, 0.66);
 	color: rgba(255, 255, 255, 0.92);
-	backdrop-filter: blur(2px);
 }
 
 /* Where the poster is too small to carry the badge, the glyph goes in front of
@@ -4037,234 +4169,53 @@ h3.scout-section-title {
 	}
 }
 
-/* ============================================================ small screens */
-
-/* Obsidian's own signal, not a width: a phone is a phone in a wide window too,
-   and every rule below is about the finger rather than the pixels.
-   `is-phone` rather than `is-mobile`, because a tablet has the room to keep
-   the desktop shape and looks under-furnished without it. */
-
-/* Everything that can be pressed grows to something a thumb can hit. The
-   controls all size themselves from these two, so this is the whole change —
-   and it has to be made on the same elements that declare them at the top of
-   this file, or the declaration nearer the control wins. */
-body.is-phone .scout-modal,
-body.is-phone .scout-detail-modal,
-body.is-phone .scout-library,
-body.is-phone .scout-home,
-body.is-phone .scout-settings {
-	--scout-control-h: 34px;
-	--scout-segment-h: 30px;
+/* Each view drawn stays in the page. The rest are put away with
+   `content-visibility`, which keeps how they were styled and laid out: putting
+   one away with `display: none` threw that away, and showing it again styled
+   every card from nothing, which was the slow part of switching tab. Only the
+   pane's own class changes, and no rule reads it from inside, so nothing in
+   the view is styled again. A view drawn ahead is styled once out of sight
+   first, where it takes no room and catches no pointer. */
+.scout-pane.is-shown {
+	display: block;
+}
+/* The board fills the page, as it did when it sat in the list directly. */
+.scout-library-body.is-board > .scout-pane.is-shown {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+	min-height: 0;
+}
+.scout-pane.is-kept {
+	content-visibility: hidden;
+	contain-intrinsic-size: 0;
+	height: 0;
+}
+.scout-pane.is-warming {
+	position: fixed;
+	inset: 0;
+	z-index: -1;
+	overflow: hidden;
+	visibility: hidden;
+	pointer-events: none;
+	contain: strict;
 }
 
-/* The manage dialog's two columns have nowhere to be on a phone. Stated here
-   as well as in the width query because a phone in landscape is a wide
-   viewport and still a phone. */
-body.is-phone .scout-organise-body,
-body.is-phone .scout-organise-section {
-	grid-template-columns: minmax(0, 1fr);
-}
-body.is-phone .scout-organise-field {
-	align-items: stretch;
-	gap: 4px;
-}
-/* Thumb-sized, like every other control on a phone. */
-body.is-phone .scout-organise-field select,
-body.is-phone .scout-organise-field input:not([type="checkbox"]) {
-	height: var(--scout-control-h, 34px);
-	font-size: 15px;
-}
-
-/* One line each, swiped rather than wrapped.
-   Three rows of dropdowns stacked above the library was the "busy" — a filter
-   row that wraps to three lines pushes the thing you came to look at off the
-   screen, and every line of it is furniture. Swiping a row keeps them all
-   reachable and gives the shelf its screen back. */
-body.is-phone .scout-filter-controls,
-body.is-phone .scout-view-bar,
-body.is-phone .scout-stats,
-body.is-phone .scout-home-figures {
-	flex-wrap: nowrap;
-	/* Sideways only — see `.scout-view-bar`. Restating `overflow-x` here would
-	   quietly put the other axis back to `auto`, which is how the views bar came
-	   to be draggable up and down after it had been fixed once already. */
-	overflow: auto hidden;
-	touch-action: pan-x;
-	scrollbar-width: none;
-	/* The last chip should be able to reach the middle of the screen rather
-	   than stopping hard against the edge. */
-	padding-inline-end: 12px;
-	-webkit-overflow-scrolling: touch;
-}
-body.is-phone .scout-filter-controls::-webkit-scrollbar,
-body.is-phone .scout-view-bar::-webkit-scrollbar,
-body.is-phone .scout-stats::-webkit-scrollbar,
-body.is-phone .scout-home-figures::-webkit-scrollbar,
-body.is-phone .scout-home-rail::-webkit-scrollbar {
-	display: none;
-}
-body.is-phone .scout-filter-controls > * {
-	flex: 0 0 auto;
-}
-/* One line: search, add, layout. Wrapping put the two controls on a line of
-   their own under the box, which spent a whole row of a small screen on
-   something that fits beside it — the Add button gives up its word instead.
-   The dropdowns, which stand beside the box on a desktop, take the line under
-   it here and swipe. */
-body.is-phone .scout-library-toolbar {
-	flex-wrap: wrap;
-	gap: 6px;
-}
-/* A basis of `auto` is the box's content width, and a flex line breaks on the
-   hypothetical sizes — before anything is allowed to shrink. So the search box
-   claimed its full 260 and pushed the layout buttons onto a line of their own,
-   whereupon it grew to fill the line it had just cleared. From a small basis all
-   three fit, and the box takes whatever is left over. The same reasoning is
-   already written out over `.scout-filter-controls`; this box never got it. */
-body.is-phone .scout-search-wrap {
-	flex: 1 1 120px;
-	min-width: 0;
-}
-body.is-phone .scout-filter-controls {
-	flex: 0 0 100%;
-	order: 1;
-}
-body.is-phone .scout-add {
-	flex: 0 0 auto;
-	width: var(--scout-control-h, 34px);
-	padding: 0;
-	justify-content: center;
-}
-body.is-phone .scout-add-label {
-	display: none;
-}
-body.is-phone .scout-layout-toggle {
-	flex: 0 0 auto;
-}
-/* The sentence explaining what a collection is costs a row of a phone screen
-   and is read once. The cards under it say the same thing by being there. */
-body.is-phone .scout-collections-lede {
-	display: none;
-}
-body.is-phone .scout-collection-cards {
-	grid-template-columns: minmax(0, 1fr);
-}
-
-/* The views bar keeps its tabs one line high and scrolls, like the filters. */
-body.is-phone .scout-view-bar {
-	padding-inline-end: 12px;
-}
-body.is-phone .scout-view-bar > * {
-	flex: 0 0 auto;
-}
-/* The trailing buttons stay put while the tabs scroll under them — the same
-   trick as on the desktop, and on a phone the bar always overflows. */
-body.is-phone .scout-view-save {
-	margin-inline-start: 4px;
-	padding-inline-start: 8px;
-}
-
-/* Scrolling a shelf of three hundred cards on a phone.
+/* A shelf of three hundred cards, drawn as cheaply as a screenful.
  *
- * Two things were making it stutter, and both are per card, which is what turns
- * a small cost into a large one.
- *
- * `content-visibility` is the large win: the browser skips layout, paint and
- * hit-testing for anything scrolled off screen, so a shelf of three hundred
- * costs about what a screenful costs. It needs the intrinsic size to keep the
- * scrollbar honest — `auto` remembers each card's real height once it has been
- * seen, and 280px is what one measures before that.
- *
- * And the kind badge carried a `backdrop-filter`, which is a compositing layer
- * and a readback of everything behind it, on every card on the shelf. Two
- * pixels of blur behind a 21px plate that is already 60% black is not worth one
- * of those, let alone three hundred. The plate stays; the blur goes, and only
- * here — on a desktop it costs nothing anybody can feel. */
-body.is-phone .scout-entries-grid > .scout-entry,
-body.is-phone .scout-entries-list > .scout-entry {
+ * `content-visibility` lets the browser skip style, layout, paint and
+ * hit-testing for every card scrolled off screen, which is most of the work of
+ * switching to a big view, and most of the work of scrolling one. It needs the
+ * intrinsic size to keep the scrollbar honest — `auto` remembers each card's
+ * real height once it has been seen, and 280px is what one measures before that.
+ */
+.scout-entries-grid > .scout-entry,
+.scout-entries-list > .scout-entry {
 	content-visibility: auto;
 	contain-intrinsic-size: auto 280px;
 }
-body.is-phone .scout-entries-list > .scout-entry {
+.scout-entries-list > .scout-entry {
 	contain-intrinsic-size: auto 71px;
-}
-body.is-phone .scout-kind-badge {
-	backdrop-filter: none;
-}
-
-/* A shelf, swiped. The grid is right on a screen wide enough to hold a row of
-   it; on a phone seven cards is four wraps of two, and a page of rails like
-   that is a wall. One row you push along is how every phone shows a shelf, and
-   it is the same seven items. */
-body.is-phone .scout-home-rail {
-	display: flex;
-	gap: 10px;
-	overflow: auto hidden;
-	touch-action: pan-x;
-	scroll-snap-type: x proximity;
-	scrollbar-width: none;
-	padding-inline-end: 12px;
-	-webkit-overflow-scrolling: touch;
-}
-body.is-phone .scout-home-rail > .scout-entry {
-	flex: 0 0 39%;
-	/* Without this the basis above is a suggestion. A flex item will not shrink
-	   below its own min-content width, and a card's min-content width is its
-	   longest unbreakable line — so a card titled "Everything Everywhere All at
-	   Once", or one carrying a long reason, quietly ignored the 39% and came out
-	   twice the width of its neighbours, cover and all. The title is already
-	   set to truncate; it never got the chance, because nothing was narrow
-	   enough to truncate against. Only the phone rail is affected: the desktop
-	   grid states its own minimum in `minmax()`, so the automatic one never
-	   applies there. */
-	min-width: 0;
-	scroll-snap-align: start;
-}
-body.is-phone .scout-home {
-	gap: 20px;
-	padding: 14px 12px 40px;
-}
-body.is-phone .scout-home-hello h2 {
-	font-size: 21px;
-}
-/* The buttons go full width rather than sitting in the corner: at this size
-   there is no corner to sit in, and two half-width buttons are two targets
-   the thumb can reach without stretching. */
-body.is-phone .scout-home-actions {
-	flex: 1 1 100%;
-	margin-inline-start: 0;
-}
-body.is-phone .scout-home-actions button {
-	flex: 1 1 0;
-	justify-content: center;
-}
-body.is-phone .scout-home-figures {
-	gap: 18px;
-}
-body.is-phone .scout-figure dd {
-	font-size: 15px;
-}
-body.is-phone .scout-home-section-head {
-	flex-wrap: wrap;
-}
-/* The note under a section heading is the first thing to go: it explains a row
-   that the row itself explains. */
-body.is-phone .scout-home-note {
-	display: none;
-}
-
-/* The suggestion buttons never appear on hover, because there is no hover:
-   they are simply on. */
-body.is-phone .scout-suggest-actions {
-	opacity: 1;
-}
-
-/* Conditions read as a stack of full-width controls rather than as a sentence
-   that wraps mid-clause. */
-body.is-phone .scout-condition select,
-body.is-phone .scout-condition input {
-	flex: 1 1 130px;
-	max-width: none;
 }
 
 /* ================================================================== home */
@@ -6248,6 +6199,53 @@ body.is-phone .scout-stats-rating-sum {
 .sd-root .sd-bone.sd-round {
 	border-radius: 50%;
 }
+/* While the sources answer, the dialog is laid out underneath, unseen, and the
+   frame is held over it. It comes into view whole, so nothing in it moves. */
+.sd-root {
+	position: relative;
+}
+.sd-root.sd-pending .sd-scroll {
+	visibility: hidden;
+	overflow: hidden;
+}
+.sd-root .sd-scroll.sd-in {
+	animation: sd-fade var(--sd-quick) var(--sd-ease) both;
+}
+/* Held back long enough that an answer from the cache never flashes it. It
+   covers the dialog, so once shown it can fade out over the finished one. */
+.sd-root .sd-skeleton {
+	position: absolute;
+	inset: 0;
+	z-index: 2;
+	overflow: hidden;
+	pointer-events: none;
+	background: var(--sd-bg);
+	border-radius: inherit;
+	animation: sd-fade var(--sd-quick) var(--sd-ease) 300ms both;
+}
+/* Labels that take turns in one place, sized to the longest of them. */
+.sd-root .sd-swap {
+	display: inline-grid;
+}
+.sd-root .sd-swap > * {
+	grid-area: 1 / 1;
+}
+.sd-root .sd-swap > .sd-off {
+	visibility: hidden;
+}
+.sd-root .sd-skel-meta {
+	margin-top: 4px;
+}
+.sd-root .sd-skeleton .sd-tabs {
+	align-items: center;
+	height: 41px;
+}
+.sd-root .sd-skel-body {
+	display: flex;
+	flex-direction: column;
+	gap: 11px;
+	padding-top: 20px;
+}
 .sd-root .sd-loading {
 	background-color: var(--sd-el2);
 	background-image: linear-gradient(
@@ -6807,23 +6805,6 @@ body.is-phone .scout-stats-rating-sum {
 	color: var(--text-normal);
 }
 
-/* On a phone the picker is a sheet from the bottom, in reach of a thumb. */
-body.is-phone .scout-picker {
-	position: fixed;
-	inset: auto 0 0 0;
-	width: auto;
-	max-height: 75vh;
-	border-radius: 14px 14px 0 0;
-	transform-origin: bottom center;
-	padding-bottom: env(safe-area-inset-bottom, 0);
-}
-body.is-phone .scout-pick-chip {
-	height: 34px;
-}
-body.is-phone .scout-pick-chip button {
-	font-size: 14px;
-}
-
 /* -------------------------------------------------------- group headers */
 
 /* A heading that folds its shelf away. */
@@ -7271,3 +7252,1119 @@ body.is-phone .scout-board-col {
 	gap:5px;
 }
 .scout-blend-line.is-total b { font-size:14px; }
+
+/* ------------------------------------------------------------------- AI */
+
+/* One mark for everything the AI made: a small sparkles icon and a hairline
+   of accent. Quiet on purpose — it says where a thing came from, not "look". */
+:root {
+	--scout-ai-hairline: color-mix(in srgb, var(--interactive-accent) 45%, transparent);
+}
+
+/* Threads on Home. */
+.scout-threads {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+	gap: 10px;
+}
+.scout-thread {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	min-width: 0;
+	padding: 10px 34px 10px 10px;
+	border: 1px solid var(--background-modifier-border);
+	border-top-color: var(--scout-ai-hairline);
+	border-radius: var(--scout-radius, 8px);
+	background: var(--background-primary);
+	cursor: pointer;
+	transition: background-color 120ms ease, border-color 120ms ease;
+}
+.scout-thread:hover,
+.scout-thread:focus-visible {
+	background: var(--background-modifier-hover);
+	border-color: var(--background-modifier-border-hover);
+	border-top-color: var(--interactive-accent);
+}
+.scout-thread-covers {
+	display: flex;
+	flex: 0 0 auto;
+	padding-inline-start: 6px;
+}
+.scout-thread-covers .scout-thread-cover {
+	width: 30px;
+	height: 44px;
+	margin-inline-start: -8px;
+	border-radius: 4px;
+	object-fit: cover;
+	box-shadow: 0 0 0 2px var(--background-primary);
+	font-size: 9px;
+}
+.scout-thread-text {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+.scout-thread-name {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	font-size: 13.5px;
+	font-weight: 600;
+	color: var(--text-normal);
+}
+.scout-thread-name span {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+.scout-thread-name .scout-icon {
+	color: var(--text-faint);
+}
+.scout-thread-desc {
+	margin: 0;
+	font-size: 12px;
+	line-height: 1.35;
+	color: var(--text-muted);
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+.scout-thread-count {
+	font-size: 11.5px;
+	color: var(--text-faint);
+}
+.scout-thread-menu {
+	position: absolute;
+	top: 6px;
+	inset-inline-end: 4px;
+	opacity: 0;
+}
+.scout-thread:hover .scout-thread-menu,
+.scout-thread:focus-within .scout-thread-menu,
+body.is-mobile .scout-thread-menu {
+	opacity: 1;
+}
+
+/* A thread opened in the library: a chip that names the set, not a filter. */
+.scout-filter-chip.is-scope {
+	background: var(--background-modifier-border);
+	color: var(--text-normal);
+	box-shadow: inset 0 0 0 1px var(--scout-ai-hairline);
+}
+.scout-filter-chip.is-scope button:disabled {
+	cursor: default;
+	opacity: 1;
+}
+
+/* Moods and themes in the manage panel. */
+.sd-root .scout-ai-row .sd-ctl {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+	padding-inline-start: 8px;
+	border-inline-start: 1px solid var(--scout-ai-hairline);
+}
+.scout-ai-chip {
+	padding: 3px 9px;
+	border-radius: 999px;
+	background: var(--background-modifier-hover);
+	font-size: 12.5px;
+	color: var(--text-muted);
+}
+.scout-ai-chip.is-mood {
+	color: var(--text-normal);
+}
+.scout-ai-offer {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+	font-size: 12.5px;
+	color: var(--text-muted);
+}
+.scout-ai-offer .scout-icon {
+	color: var(--text-accent);
+}
+button.scout-ai-link {
+	padding: 0;
+	height: auto;
+	background: none;
+	box-shadow: none;
+	color: var(--text-accent);
+	font-size: inherit;
+	cursor: pointer;
+}
+button.scout-ai-link:hover {
+	text-decoration: underline;
+}
+.scout-ai-error {
+	flex-basis: 100%;
+	font-size: 12px;
+	color: var(--text-error);
+}
+body.is-phone .scout-threads {
+	grid-template-columns: 1fr;
+}
+
+/* Ask: the bar under Home's greeting. A field with the AI's mark, no chrome. */
+.scout-ask-bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	max-width: 560px;
+	margin-top: 14px;
+	padding: 0 4px 0 11px;
+	height: 36px;
+	border: 1px solid var(--background-modifier-border);
+	border-bottom-color: var(--scout-ai-hairline);
+	border-radius: var(--scout-radius, 8px);
+	background: var(--background-primary);
+	transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.scout-ask-bar:focus-within {
+	border-color: var(--scout-ai-hairline);
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--interactive-accent) 14%, transparent);
+}
+.scout-ask-bar > .scout-icon {
+	flex: 0 0 auto;
+	color: var(--text-accent);
+}
+.scout-ask-bar input.scout-ask-input {
+	flex: 1 1 auto;
+	min-width: 0;
+	height: 100%;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	box-shadow: none;
+	font-size: 13.5px;
+}
+.scout-ask-bar input.scout-ask-input:focus {
+	box-shadow: none;
+}
+button.scout-ask-go {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border-radius: 50%;
+	background: var(--interactive-accent);
+	box-shadow: none;
+	color: var(--text-on-accent);
+	cursor: pointer;
+}
+button.scout-ask-go:disabled {
+	background: var(--background-modifier-hover);
+	color: var(--text-faint);
+	cursor: default;
+}
+.scout-ask-bar.is-busy button.scout-ask-go .scout-icon,
+.scout-search-ai:disabled .scout-icon,
+.scout-ai-ask[aria-busy="true"] .scout-icon {
+	animation: scout-ai-spin 1s linear infinite;
+}
+@keyframes scout-ai-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+/* Ask: the answer, directly under the header. */
+.scout-ask-answer {
+	padding-top: 2px;
+}
+.scout-ask-head {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	padding-inline-start: 10px;
+	border-inline-start: 2px solid var(--scout-ai-hairline);
+}
+.scout-ask-head > .scout-icon {
+	flex: 0 0 auto;
+	margin-top: 2px;
+	color: var(--text-accent);
+}
+.scout-ask-summary {
+	flex: 1 1 auto;
+	min-width: 0;
+	margin: 0;
+	font-size: 14px;
+	line-height: 1.4;
+	color: var(--text-normal);
+}
+.scout-ask-thinking {
+	color: var(--text-muted);
+}
+.scout-ask-close {
+	flex: 0 0 auto;
+	margin-top: -3px;
+}
+.scout-ask-foot {
+	margin: 0;
+	font-size: 12px;
+	color: var(--text-faint);
+}
+.scout-ai-error-line {
+	font-size: 12.5px;
+	color: var(--text-error);
+}
+.scout-ai-why .scout-icon {
+	color: var(--text-accent);
+}
+.scout-ai-owned {
+	inset-inline-end: auto;
+	inset-inline-start: 5px;
+	top: auto;
+	bottom: 5px;
+}
+
+/* The library's sparkle, beside the clear chip in the search box. */
+.scout-search-wrap .scout-search-ai {
+	position: absolute;
+	inset-inline-end: 28px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 20px;
+	padding: 0;
+	border: 0;
+	border-radius: 50%;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-accent);
+	cursor: pointer;
+	--icon-size: 13px;
+}
+.scout-search-wrap .scout-search-ai:hover {
+	background: var(--background-modifier-hover);
+}
+.scout-search-wrap .scout-search-ai:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 1px;
+}
+.scout-search-wrap .scout-search-ai .scout-icon {
+	display: flex;
+}
+.scout-search-wrap.has-ai input.scout-library-search:not(:placeholder-shown) {
+	padding-inline-end: 52px;
+}
+.scout-ai-line {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	margin: 2px 0 0;
+	padding-inline-start: 9px;
+	border-inline-start: 2px solid var(--scout-ai-hairline);
+	font-size: 12.5px;
+	color: var(--text-muted);
+}
+.scout-ai-line > .scout-icon {
+	flex: 0 0 auto;
+	color: var(--text-accent);
+}
+.scout-ai-line > span {
+	flex: 0 1 auto;
+	min-width: 0;
+}
+.scout-ai-line.is-error > span {
+	color: var(--text-error);
+}
+
+/* Scout's take and Across kinds on the detail page. */
+.scout-ai-ask-line {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px 10px;
+	margin: 0;
+}
+button.scout-ai-ask {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: auto;
+	padding: 2px 0;
+	background: none;
+	box-shadow: none;
+	color: var(--text-muted);
+	font-size: 13px;
+	cursor: pointer;
+}
+button.scout-ai-ask .scout-icon {
+	color: var(--text-accent);
+}
+button.scout-ai-ask:hover:not(:disabled) {
+	color: var(--text-normal);
+}
+.scout-ai-take,
+.scout-ai-across {
+	padding-inline-start: 10px;
+	border-inline-start: 2px solid var(--scout-ai-hairline);
+}
+.scout-ai-take h3 .scout-icon,
+.scout-ai-across h3 .scout-icon {
+	color: var(--text-accent);
+}
+.scout-ai-fit {
+	margin-inline-start: 4px;
+	padding: 1px 8px;
+	border-radius: 999px;
+	background: var(--background-modifier-hover);
+	font-size: 11.5px;
+	font-weight: 500;
+	color: var(--text-muted);
+}
+.scout-ai-fit.is-strong {
+	background: color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+	color: var(--text-accent);
+}
+.scout-ai-take-headline {
+	margin: 4px 0 2px;
+	font-weight: 600;
+}
+.scout-ai-take-why {
+	margin: 0 0 4px;
+	font-size: 13.5px;
+	line-height: 1.5;
+	color: var(--text-muted);
+}
+button.scout-ai-again {
+	font-size: 12px;
+}
+.scout-ai-across-rail {
+	grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+	gap: 12px 10px;
+	margin-top: 6px;
+}
+body.is-phone .scout-ask-bar {
+	max-width: none;
+}
+
+/* ================================================================== phone */
+
+/* Scout on a phone.
+
+   The same pages, the same names, the same icons as on a desktop — a phone is
+   another window onto one library, and nothing you learn on one should have to
+   be learned again on the other. What changes is how you hold it:
+
+   - One thing scrolls. The page's own controls scroll away with it, and only
+     the search row stays, pinned under Obsidian's header, because that is the
+     one you come back to.
+   - Rows go sideways. Views, filters, shelves and figures are single lines
+     that run off the edge of the screen and swipe, rather than wrapping into a
+     stack of furniture above the thing you came to look at.
+   - Choices open as sheets. Sort, group and layout are one button; Obsidian
+     shows its menus as a sheet from the bottom, in reach of a thumb.
+   - Dialogs take the whole screen, as every phone app's do.
+   - Nothing is drawn under the floating bar at the foot of the screen.
+
+   Obsidian's own signal, not a width: a phone is a phone in landscape too, and
+   every rule here is about the finger rather than the pixels. `is-phone`
+   rather than `is-mobile`, because a tablet has the room to keep the desktop
+   shape and looks under-furnished without it. */
+
+body.is-phone {
+	/* The page's side margin, and how far a sideways row bleeds past it. */
+	--scout-gutter: 16px;
+	/* Clear of the floating navigation bar, when there is one. Without one the
+	   bar is in the layout already and a little air is all the foot needs. */
+	--scout-foot: 24px;
+}
+body.is-phone.is-floating-nav {
+	--scout-foot: calc(
+		var(--navbar-height, 48px) + var(--navbar-bottom-offset, 34px) + 20px
+	);
+}
+/* Obsidian pads a phone's view on every side; Scout's pages set their own
+   margins, and a row that runs to the edge of the glass needs the view to. */
+body.is-phone .view-content.scout-home-container,
+body.is-phone .view-content.scout-library-container,
+body.is-phone .view-content.scout-stats-container {
+	padding: 0;
+}
+
+/* Everything that can be pressed grows to something a thumb can hit. The
+   controls all size themselves from these two, so this is most of the change —
+   and it has to be made on the same elements that declare them at the top of
+   this file, or the declaration nearer the control wins. */
+body.is-phone .scout-modal,
+body.is-phone .scout-detail-modal,
+body.is-phone .scout-library,
+body.is-phone .scout-home,
+body.is-phone .scout-settings {
+	--scout-control-h: 38px;
+	--scout-segment-h: 32px;
+}
+
+/* A row that runs off the edge of the screen. The negative margin takes it to
+   the glass on both sides and the padding puts its first item back on the
+   page's margin, so it starts where everything else starts and ends under
+   your thumb rather than a gutter short. */
+body.is-phone .scout-view-bar,
+body.is-phone .scout-filter-chips,
+body.is-phone .scout-home-figures,
+body.is-phone .scout-home-rail,
+body.is-phone .scout-stats-page .scout-segment {
+	flex-wrap: nowrap;
+	/* Sideways only. Restating `overflow-x` alone would quietly put the other
+	   axis back to `auto`, which is how the views bar came to be draggable up
+	   and down after it had been fixed once already. */
+	overflow: auto hidden;
+	touch-action: pan-x;
+	overscroll-behavior-x: contain;
+	scrollbar-width: none;
+	-webkit-overflow-scrolling: touch;
+}
+body.is-phone .scout-view-bar::-webkit-scrollbar,
+body.is-phone .scout-filter-chips::-webkit-scrollbar,
+body.is-phone .scout-home-figures::-webkit-scrollbar,
+body.is-phone .scout-home-rail::-webkit-scrollbar,
+body.is-phone .scout-stats-page .scout-segment::-webkit-scrollbar {
+	display: none;
+}
+body.is-phone .scout-view-bar,
+body.is-phone .scout-home-figures,
+body.is-phone .scout-home-rail {
+	margin-inline: calc(-1 * var(--scout-gutter));
+	padding-inline: var(--scout-gutter);
+	scroll-padding-inline: var(--scout-gutter);
+}
+body.is-phone .scout-view-bar > *,
+body.is-phone .scout-home-figures > * {
+	flex: 0 0 auto;
+}
+
+/* Hidden from sight, kept for a screen reader: the words beside an icon that
+   stands on its own on a phone. */
+body.is-phone .scout-add-label,
+body.is-phone .scout-home-actions button:not(.mod-cta) .scout-home-action-label {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- library */
+
+/* One scroller for the page: the views and the filters go up with the shelf,
+   and the search row stays. Pinned above a scrolling body, the four rows of
+   controls held two fifths of the screen all the time, which is most of a
+   phone. A board keeps the old arrangement — its columns scroll on their own
+   and need the page to hold still. */
+body.is-phone .scout-library {
+	overflow: hidden auto;
+	overscroll-behavior-y: contain;
+	padding: 0 var(--scout-gutter) var(--scout-foot);
+	gap: 8px;
+}
+body.is-phone .scout-library:has(> .scout-library-body.is-board) {
+	overflow: hidden;
+}
+body.is-phone .scout-library-body:not(.is-board) {
+	flex: none;
+	overflow: visible;
+	padding-top: 2px;
+	padding-bottom: 16px;
+}
+
+/* The views: tabs on a line you swipe. On a desktop the last two buttons stick
+   to the end while the tabs slide under them; on a phone the bar always
+   overflows, and a button sitting over half a tab read as two tabs drawn on
+   top of each other. Here they are simply the last things on the line. */
+body.is-phone .scout-view-bar {
+	flex: none;
+	gap: 0;
+	padding-top: 4px;
+}
+body.is-phone .scout-view-bar button {
+	height: 42px;
+	padding: 0 12px;
+	font-size: 14px;
+}
+body.is-phone .scout-view-bar button:hover {
+	background: transparent;
+}
+body.is-phone .scout-view-bar .scout-view-save,
+body.is-phone .scout-view-bar .scout-view-manage {
+	position: static;
+	background: transparent;
+}
+body.is-phone .scout-view-save {
+	margin-inline-start: 4px;
+}
+body.is-phone .scout-view-manage {
+	width: 42px;
+}
+
+/* Search, the display sheet, Add. The row that stays. */
+body.is-phone .scout-library-toolbar {
+	position: sticky;
+	top: 0;
+	z-index: 3;
+	flex: none;
+	flex-wrap: nowrap;
+	gap: 8px;
+	margin-inline: calc(-1 * var(--scout-gutter));
+	padding: 8px var(--scout-gutter);
+	background: var(--background-primary);
+}
+body.is-phone .scout-search-wrap {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+body.is-phone .scout-library-search {
+	width: 100%;
+	height: var(--scout-control-h);
+	font-size: 16px;
+}
+body.is-phone .scout-display-button,
+body.is-phone .scout-add {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	width: var(--scout-control-h);
+	height: var(--scout-control-h);
+	padding: 0;
+	border-radius: var(--scout-radius);
+}
+
+/* The filter line: the button, then what is on, swiped. */
+body.is-phone .scout-filter-bar {
+	flex: none;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+body.is-phone .scout-filter-chips {
+	margin-inline-end: calc(-1 * var(--scout-gutter));
+	padding-inline-end: var(--scout-gutter);
+}
+body.is-phone .scout-filter-add {
+	height: 34px;
+	font-size: 14px;
+}
+body.is-phone .scout-filter-chip,
+body.is-phone .scout-filter-preset {
+	height: 32px;
+	font-size: 13px;
+}
+body.is-phone .scout-filter-chip button {
+	font-size: 13px;
+}
+/* Unsaved changes: a line of their own, under the chips, rather than
+   squeezing them to nothing. */
+body.is-phone .scout-filter-save {
+	flex: 1 1 100%;
+	justify-content: flex-end;
+}
+body.is-phone .scout-filter-save button {
+	height: 34px;
+	font-size: 13px;
+}
+
+/* The filter picker: a sheet from the bottom, in reach of a thumb, with the
+   page dimmed behind it. Its foot clears the floating bar, which is drawn
+   over the workspace whatever order the two are stacked in. */
+body.is-phone .scout-picker {
+	position: fixed;
+	inset: auto 0 0 0;
+	width: auto;
+	max-height: 82vh;
+	border: 0;
+	border-radius: 16px 16px 0 0;
+	box-shadow:
+		0 -8px 30px rgba(0, 0, 0, 0.3),
+		0 0 0 100vmax rgba(0, 0, 0, 0.45);
+	transform-origin: bottom center;
+	animation-name: scout-sheet-in;
+}
+@keyframes scout-sheet-in {
+	from {
+		transform: translateY(24px);
+		opacity: 0;
+	}
+}
+body.is-phone .scout-picker-tabs {
+	padding: 8px 8px 0;
+}
+body.is-phone .scout-picker-tabs button {
+	height: 52px;
+	font-size: 12px;
+}
+body.is-phone .scout-picker-body {
+	padding: 16px;
+	gap: 18px;
+}
+body.is-phone .scout-picker-foot {
+	padding: 10px 16px var(--scout-foot);
+}
+body.is-phone .scout-picker-foot button {
+	height: 38px;
+	padding: 0 18px;
+	font-size: 14px;
+}
+body.is-phone .scout-pick-chip {
+	height: 36px;
+}
+body.is-phone .scout-pick-chip button {
+	padding: 0 14px;
+	font-size: 14px;
+}
+body.is-phone .scout-pick-families button {
+	height: 32px;
+	font-size: 13px;
+}
+body.is-phone .scout-pick-search,
+body.is-phone .scout-pick-years input {
+	height: 38px;
+	font-size: 16px;
+}
+
+/* Three across, posters first. The plate behind each card is a desktop's
+   answer to a pointer — something to light up under it — and on a card a
+   third of a phone wide its padding was a tenth of the poster. Here the cover
+   is the card, and a press dims it. */
+body.is-phone .scout-library .scout-entries-grid {
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 16px 10px;
+}
+body.is-phone .scout-entries-grid .scout-entry {
+	padding: 0;
+	background: transparent;
+	-webkit-tap-highlight-color: transparent;
+	transition: opacity 120ms var(--scout-ease);
+}
+body.is-phone .scout-entries-grid .scout-entry:hover {
+	background: transparent;
+}
+body.is-phone .scout-entries-grid .scout-entry:active {
+	background: transparent;
+	opacity: 0.6;
+}
+body.is-phone .scout-entries-grid .scout-entry-art {
+	margin-bottom: 6px;
+}
+body.is-phone .scout-entries-grid .scout-entry h4 {
+	font-size: 13px;
+	line-height: 1.3;
+}
+body.is-phone .scout-entries-grid .scout-entry-info {
+	gap: 2px;
+	padding-inline: 1px;
+}
+
+/* A list row is a row you tap. */
+body.is-phone .scout-entries-list .scout-entry {
+	-webkit-tap-highlight-color: transparent;
+}
+body.is-phone .scout-entries-list .scout-entry:active {
+	background: var(--background-modifier-hover);
+}
+
+/* A shelf's heading folds it; a heading needs to be a target, not a label. */
+body.is-phone .scout-library button.scout-group-title {
+	min-height: 36px;
+	font-size: 14px;
+}
+
+/* The sentence explaining what a collection is costs a row of a phone screen
+   and is read once. The cards under it say the same thing by being there. */
+body.is-phone .scout-collections-lede {
+	display: none;
+}
+body.is-phone .scout-collection-cards {
+	grid-template-columns: minmax(0, 1fr);
+}
+
+/* ------------------------------------------------------------------- home */
+
+body.is-phone .scout-home {
+	gap: 26px;
+	padding: 16px var(--scout-gutter) var(--scout-foot);
+}
+body.is-phone .scout-home-head {
+	gap: 14px;
+	padding-bottom: 18px;
+}
+body.is-phone .scout-home-hello h2 {
+	font-size: 24px;
+}
+body.is-phone .scout-home-hello p {
+	font-size: 14px;
+}
+/* Add takes the line, and the other two pages are a square each beside it:
+   one wide target for the thing you do most, two you can still find by their
+   icons, which are the icons those pages carry in their tabs. */
+body.is-phone .scout-home-actions {
+	flex: 1 1 100%;
+	flex-wrap: nowrap;
+	margin-inline-start: 0;
+}
+body.is-phone .scout-home-actions button {
+	height: 42px;
+	justify-content: center;
+	font-size: 15px;
+}
+body.is-phone .scout-home-actions button.mod-cta {
+	flex: 1 1 auto;
+}
+body.is-phone .scout-home-actions button:not(.mod-cta) {
+	flex: 0 0 auto;
+	width: 42px;
+	padding: 0;
+}
+/* Figures as a swiped strip of small numbers. */
+body.is-phone .scout-home-figures {
+	gap: 22px;
+}
+body.is-phone .scout-figure dd {
+	font-size: 16px;
+}
+body.is-phone .scout-home-section {
+	gap: 12px;
+}
+body.is-phone .scout-home-section-head {
+	flex-wrap: wrap;
+	row-gap: 6px;
+}
+body.is-phone .scout-home-section-head h3 {
+	font-size: 17px;
+}
+/* The note under a section heading is the first thing to go: it explains a row
+   that the row itself explains. */
+body.is-phone .scout-home-note {
+	display: none;
+}
+
+/* A shelf, swiped. The grid is right on a screen wide enough to hold a row of
+   it; on a phone seven cards is a wall of wraps. One row you push along is how
+   every phone shows a shelf, and it is the same seven items — three and a bit
+   on screen, the bit saying there are more. */
+/* Not snapped. A snapped row holds on to the card it is snapped to, and when
+   the suggestions came in and the order changed under it, the row followed
+   that card along and opened a card in, with the first one cut off. */
+body.is-phone .scout-home-rail {
+	display: flex;
+	gap: 10px;
+}
+body.is-phone .scout-home-rail > .scout-entry {
+	flex: 0 0 calc((100% - 20px) / 3.25);
+	/* Without this the basis above is a suggestion. A flex item will not shrink
+	   below its own min-content width, and a card's min-content width is its
+	   longest unbreakable line — so a card titled "Everything Everywhere All at
+	   Once", or one carrying a long reason, came out twice the width of its
+	   neighbours. The title truncates; it needs something narrow enough to
+	   truncate against. */
+	min-width: 0;
+}
+/* The suggestion buttons never appear on hover, because there is no hover:
+   they are simply on. */
+body.is-phone .scout-suggest-actions {
+	opacity: 1;
+}
+
+/* ------------------------------------------------------------------ stats */
+
+body.is-phone .scout-stats-page {
+	padding: 16px var(--scout-gutter) var(--scout-foot);
+	gap: 16px;
+}
+body.is-phone .scout-stats-page .scout-segment {
+	flex: 1 1 100%;
+}
+body.is-phone .scout-stats-page .scout-segment button.scout-plain:not(.clickable-icon) {
+	flex: 0 0 auto;
+	height: 32px;
+	padding: 0 12px;
+	font-size: 14px;
+}
+body.is-phone .scout-stats-grid {
+	gap: 14px;
+}
+body.is-phone .scout-stats-card {
+	padding: 16px;
+}
+/* The prompt to set a goal: a sentence and a button, not three columns of
+   which the sentence got the narrowest. */
+body.is-phone .scout-stats-goal-prompt {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	align-items: center;
+	gap: 8px 12px;
+	text-align: start;
+}
+body.is-phone .scout-stats-goal-prompt > button {
+	grid-column: 2;
+	justify-self: start;
+}
+
+/* ---------------------------------------------------------------- dialogs */
+
+/* Every dialog is Obsidian's large sheet on a phone — `mod-lg`, which
+   `shapeScoutModal` asks for — so it opens the way Obsidian's own settings
+   do. Its content scrolls to the foot of the glass and stops short of the
+   home indicator. */
+body.is-phone .modal.scout-modal .modal-content {
+	padding-bottom: calc(var(--safe-area-inset-bottom, 0px) + 16px);
+}
+/* The detail page runs its artwork to the edges and pads its own panes. */
+body.is-phone .modal.scout-detail-modal:not(.mod-sidebar-layout) .modal-content {
+	padding: 0;
+}
+
+/* Search: the box and its choices stay put, and only the results scroll
+   under them, so a new search is always a thumb away. The choices share the
+   row evenly, with less padding than on a desktop so their labels fit. */
+body.is-phone .scout-search-modal .modal-content {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	overflow: hidden;
+	padding-bottom: 0;
+}
+body.is-phone .scout-search-modal .scout-modal-content {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	min-height: 0;
+}
+body.is-phone .scout-search-input {
+	flex: none;
+	font-size: 16px;
+	padding: 12px;
+}
+body.is-phone .scout-controls {
+	flex: none;
+	gap: 6px;
+	margin-bottom: 12px;
+}
+body.is-phone .scout-controls select {
+	/* Obsidian sizes a phone's selects to their content; even shares here. */
+	flex: 1 1 0;
+	min-width: 0;
+	padding-inline: 8px 20px;
+	background-position: right 4px center;
+	font-size: 13px;
+}
+body.is-phone .scout-view-toggle {
+	width: var(--scout-control-h);
+}
+body.is-phone .scout-results-container {
+	flex: 1;
+	min-height: 0;
+	max-height: none;
+	overflow: hidden auto;
+	padding-inline-end: 0;
+	padding-bottom: calc(var(--safe-area-inset-bottom, 0px) + 16px);
+}
+body.is-phone .scout-results-grid {
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 10px;
+}
+
+/* The views and collections editor: one column, thumb-sized fields. */
+body.is-phone .scout-organise-body,
+body.is-phone .scout-organise-section {
+	grid-template-columns: minmax(0, 1fr);
+}
+body.is-phone .scout-organise-field {
+	grid-template-columns: minmax(0, 1fr);
+	align-items: stretch;
+	gap: 4px;
+}
+body.is-phone .scout-organise-field select,
+body.is-phone .scout-organise-field input:not([type="checkbox"]) {
+	height: var(--scout-control-h);
+	font-size: 16px;
+}
+/* Conditions read as a stack of full-width controls rather than as a sentence
+   that wraps mid-clause. */
+body.is-phone .scout-condition select,
+body.is-phone .scout-condition input {
+	flex: 1 1 130px;
+	max-width: none;
+}
+
+/* ----------------------------------------------------------------- detail */
+
+/* The detail page, phone-shaped: the backdrop as a banner across the top, the
+   poster standing on its lower edge with the title beside it, and everything
+   you can do — the scores, the buttons — the full width underneath. The
+   desktop's poster-and-column made the column a hundred and eighty pixels
+   wide, and every row in it wrapped. */
+body.is-phone .sd-root .sd-hero {
+	padding: 0 var(--scout-gutter) 6px;
+}
+body.is-phone .sd-root .sd-bd {
+	height: 220px;
+	opacity: 0.9;
+}
+body.is-phone .sd-root .sd-bd::after {
+	background: linear-gradient(
+		180deg,
+		color-mix(in srgb, var(--sd-bg) 10%, transparent) 0%,
+		color-mix(in srgb, var(--sd-bg) 40%, transparent) 50%,
+		var(--sd-bg) 100%
+	);
+}
+body.is-phone .sd-root .sd-hero-in {
+	display: grid;
+	grid-template-columns: 104px minmax(0, 1fr);
+	grid-template-areas:
+		"poster id"
+		"do do";
+	column-gap: 14px;
+	row-gap: 0;
+	align-items: end;
+	padding-top: 100px;
+}
+body.is-phone .sd-root .sd-head {
+	display: contents;
+}
+body.is-phone .sd-root .sd-poster {
+	grid-area: poster;
+	width: 104px;
+}
+body.is-phone .sd-root .sd-head-id {
+	grid-area: id;
+	min-width: 0;
+	padding-bottom: 2px;
+}
+body.is-phone .sd-root .sd-head-do {
+	grid-area: do;
+	min-width: 0;
+	padding-top: 14px;
+}
+body.is-phone .sd-root .sd-head h2 {
+	margin: 0 0 4px;
+	font-size: 22px;
+	line-height: 1.2;
+	display: -webkit-box;
+	-webkit-line-clamp: 3;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+/* The service it streams on: the logo alone under the poster; the name is in
+   "Where to watch", one tap away. */
+body.is-phone .sd-root .sd-watchbar {
+	justify-content: center;
+	padding: 6px;
+}
+body.is-phone .sd-root .sd-watchbar > span {
+	display: none;
+}
+body.is-phone .sd-root .sd-tagline {
+	margin: 0 0 12px;
+}
+/* The scores, one line you swipe. */
+body.is-phone .sd-root .sd-hero .sd-scores {
+	flex-wrap: nowrap;
+	margin-inline: calc(-1 * var(--scout-gutter));
+	padding-inline: var(--scout-gutter);
+	overflow: auto hidden;
+	touch-action: pan-x;
+	scrollbar-width: none;
+}
+body.is-phone .sd-root .sd-hero .sd-scores::-webkit-scrollbar {
+	display: none;
+}
+body.is-phone .sd-root .sd-hero .sd-scores > * {
+	flex: 0 0 auto;
+}
+/* The buttons: the main one takes the width, the rest are squares. */
+body.is-phone .sd-root .sd-actions {
+	display: flex;
+	flex-wrap: nowrap;
+	gap: 8px;
+}
+body.is-phone .sd-root .sd-actions .sd-btn {
+	height: 42px;
+	justify-content: center;
+}
+body.is-phone .sd-root .sd-actions .sd-btn.sd-cta {
+	flex: 1 1 auto;
+}
+body.is-phone .sd-root .sd-actions .sd-btn.sd-icon {
+	flex: 0 0 42px;
+	width: 42px;
+}
+
+/* The close button, over the artwork: a disc that reads on any backdrop. The
+   tabs that stick to the top of the page leave room for it, and the title
+   they carry on a desktop stays out of the way — the page you are on is the
+   thing you opened. */
+body.is-phone .scout-detail-modal > .modal-header-button {
+	position: absolute;
+	top: 10px;
+	inset-inline-end: 10px;
+	z-index: 10;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 36px;
+	height: 36px;
+	padding: 0;
+	border-radius: 50%;
+	background: color-mix(in srgb, var(--background-primary) 72%, transparent);
+	backdrop-filter: blur(10px);
+	-webkit-backdrop-filter: blur(10px);
+}
+body.is-phone .sd-root .sd-tabs {
+	gap: 22px;
+	padding-inline-end: 56px;
+}
+body.is-phone .sd-root .sd-tab {
+	padding: 13px 0 11px;
+	font-size: 15px;
+}
+body.is-phone .sd-root .sd-stuck-t {
+	display: none;
+}
+body.is-phone .sd-root .sd-pane {
+	padding-bottom: calc(var(--safe-area-inset-bottom, 0px) + 28px);
+}
+
+/* ------------------------------------------------------------------ crash */
+
+/* A page that failed to draw: what went wrong, selectable so it can be
+   copied, and a way to try again. */
+.scout-crash {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 10px;
+	max-width: 640px;
+	margin: 0 auto;
+	padding: 32px var(--scout-gutter, 16px);
+}
+.scout-crash-title {
+	margin: 0;
+	font-weight: 600;
+}
+.scout-crash-detail {
+	width: 100%;
+	margin: 0;
+	padding: 10px 12px;
+	overflow: auto;
+	white-space: pre-wrap;
+	word-break: break-word;
+	font-size: 12px;
+	border-radius: 6px;
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	user-select: text;
+	-webkit-user-select: text;
+}

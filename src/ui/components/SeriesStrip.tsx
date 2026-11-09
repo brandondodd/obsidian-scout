@@ -4,7 +4,7 @@ import { isSeriesAware } from "../../core/provider";
 import type { MediaItem, MediaRef, Series } from "../../core/types";
 import { ScoutDetailModal } from "../detailModal";
 import MediaCard from "./Card";
-import { Icon, resolveImage, useProviderData } from "./shared";
+import { Icon, resolveImage, useProviderData, type Async } from "./shared";
 
 /**
  * The other films in the same series.
@@ -38,22 +38,20 @@ import { Icon, resolveImage, useProviderData } from "./shared";
  */
 let leftOpen = false;
 
-export interface SeriesStripProps {
-	ctx: ScoutContext;
-	source: MediaRef;
+/**
+ * The series a title belongs to, asked for by the dialog rather than the strip.
+ *
+ * The strip is on a tab that is not open at first, and fetching when it was
+ * opened meant the heading arrived after the tab had drawn and pushed the rails
+ * under it down. Asked for with the rest of the record, it is there in time.
+ */
+export function useSeries(
+	ctx: ScoutContext,
+	source: MediaRef | undefined,
 	/** The full record, when it has been fetched: it carries the series id. */
-	previous?: MediaItem;
-	/** Closes the dialog this strip is in, before opening the next one. */
-	onClose: () => void;
-}
-
-export function SeriesStrip({
-	ctx,
-	source,
-	previous,
-	onClose,
-}: SeriesStripProps): React.ReactElement | null {
-	const provider = ctx.registry.get(source.providerId);
+	previous: MediaItem | undefined,
+): Async<Series | null> {
+	const provider = source ? ctx.registry.get(source.providerId) : undefined;
 	const aware = provider && isSeriesAware(provider) ? provider : null;
 	// `series_id` is what the record carries now; `collection_id` is the same
 	// field under the name it had before the two ideas were told apart, and
@@ -61,21 +59,39 @@ export function SeriesStrip({
 	const hint = previous?.extra?.series_id ?? previous?.extra?.collection_id;
 	const wanted = typeof hint === "string" || typeof hint === "number";
 
-	const state = useProviderData<Series | null>(
-		aware && wanted
+	return useProviderData<Series | null>(
+		aware && wanted && source
 			? (signal) => aware.series(source, { signal, previous })
 			: null,
-		`${source.providerId}:${source.id}:${wanted ? String(hint) : "none"}`,
+		source
+			? `${source.providerId}:${source.id}:${wanted ? String(hint) : "none"}`
+			: "none",
 	);
+}
 
+/** Whether a series is worth a strip: one film alone is not a run. */
+export const isShelf = (series: Series | null): series is Series =>
+	series !== null && series.items.length >= 2;
+
+export interface SeriesStripProps {
+	ctx: ScoutContext;
+	source: MediaRef;
+	series: Series;
+	/** Closes the dialog this strip is in, before opening the next one. */
+	onClose: () => void;
+}
+
+export function SeriesStrip({
+	ctx,
+	source,
+	series,
+	onClose,
+}: SeriesStripProps): React.ReactElement {
 	const [expanded, setExpanded] = useState(leftOpen);
 	const fold = () => {
 		leftOpen = !expanded;
 		setExpanded(!expanded);
 	};
-
-	const series = state.data;
-	if (!series || series.items.length < 2) return null;
 
 	const held = series.items.filter(
 		(one) => ctx.library.match(one) !== undefined,

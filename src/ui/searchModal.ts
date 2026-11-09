@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import type { ScoutContext } from "../core/context";
 import { MEDIA_KIND_LABELS, type MediaKind } from "../core/types";
 import SearchModalComponent from "./components/SearchModal";
+import { shapeScoutModal } from "./modalShape";
 
 /** Obsidian modal shell hosting the React search UI. */
 export class ScoutSearchModal extends Modal {
@@ -22,7 +23,7 @@ export class ScoutSearchModal extends Modal {
 				? `Search ${MEDIA_KIND_LABELS[this.initialKind].toLowerCase()}s`
 				: "Search",
 		);
-		this.modalEl.addClass("scout-modal");
+		shapeScoutModal(this, "scout-search-modal");
 
 		this.root = createRoot(this.contentEl);
 		this.root.render(

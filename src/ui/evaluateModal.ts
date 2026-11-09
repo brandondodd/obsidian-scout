@@ -25,6 +25,8 @@ const ROWS = 5;
  */
 export class ScoutEvaluateModal extends Modal {
 	private taste: TasteCheck | null = null;
+	/** The same check with moods and themes switched off, when any note has them. */
+	private tasteWithoutAi: TasteCheck | null = null;
 	private pipeline: PipelineCheck | null = null;
 	private note = "";
 	private busy = false;
@@ -84,7 +86,7 @@ export class ScoutEvaluateModal extends Modal {
 		if (this.busy) contentEl.createEl("p", { text: "Working…" });
 		if (this.note) contentEl.createEl("p", { cls: "setting-item-description", text: this.note });
 
-		const report = formatReport(this.taste, this.pipeline);
+		const report = formatReport(this.taste, this.pipeline, this.tasteWithoutAi);
 		if (!report) return;
 		const body = contentEl.createDiv({ cls: "scout-eval-report" });
 		void MarkdownRenderer.render(this.app, report, body, "", this.component);
@@ -112,10 +114,17 @@ export class ScoutEvaluateModal extends Modal {
 		// Yield so "Working…" paints before the synchronous run.
 		await new Promise((resolve) => window.setTimeout(resolve, 0));
 		try {
-			this.taste = tasteCheck(this.ctx.settings.library(), this.ctx.library.all(), {
-				feedback: this.ctx.settings.feedback(),
-				traitOptions: this.traitOptions(),
-			});
+			const entries = this.ctx.library.all();
+			const run = (aiTraits: boolean) =>
+				tasteCheck(this.ctx.settings.library(), entries, {
+					feedback: this.ctx.settings.feedback(),
+					traitOptions: { ...this.traitOptions(), aiTraits },
+				});
+			this.taste = run(true);
+			// The gate for the AI traits: what the model scores with moods and
+			// themes against what it scores without them, on the same split.
+			const tagged = entries.some((entry) => entry.moods.length > 0 || entry.themes.length > 0);
+			this.tasteWithoutAi = tagged ? run(false) : null;
 		} finally {
 			this.busy = false;
 			this.draw();

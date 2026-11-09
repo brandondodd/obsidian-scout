@@ -1,5 +1,13 @@
 import { TFile, setIcon, type App } from "obsidian";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
+import { coverSrcSet } from "../../core/coverSizes";
 import { isAbortError } from "../../core/http";
 import type { LibraryEntry } from "../../core/library/entry";
 import type { LibraryIndex } from "../../core/library/indexer";
@@ -17,7 +25,9 @@ export function Icon({
 	size?: number;
 }): React.ReactElement {
 	const ref = useRef<HTMLSpanElement>(null);
-	useEffect(() => {
+	// Before paint: drawn after it, every icon was an empty box for a frame and
+	// then took its room, nudging the label beside it and the line after it.
+	useLayoutEffect(() => {
 		const el = ref.current;
 		if (!el) return;
 		el.empty();
@@ -127,8 +137,8 @@ export function Cover({
 	title: string;
 	className?: string;
 }): React.ReactElement {
-	const [failed, setFailed] = useState(false);
-	if (!src || failed) {
+	const [failed, setFailed] = useState<string | undefined>();
+	if (!src || failed === src) {
 		return (
 			<div className={`scout-cover scout-cover-empty ${className}`}>
 				<span>{title.slice(0, 2).toUpperCase()}</span>
@@ -136,17 +146,247 @@ export function Cover({
 		);
 	}
 	return (
-		<img
-			className={`scout-cover ${className}`}
+		<CoverImage
+			// A new picture starts its own arrival rather than inheriting the
+			// last one's finished state.
+			key={src}
 			src={src}
 			alt={alt}
-			draggable={false}
-			loading="lazy"
-			// Decoded off the main thread, so a shelf being scrolled into view
-			// does not pay for its covers in dropped frames.
-			decoding="async"
-			onError={() => setFailed(true)}
+			className={className}
+			onFail={() => setFailed(src)}
 		/>
+	);
+}
+
+/**
+ * How a cover is getting on.
+ *
+ * `loading` until its entrance comes, which is once the picture is in and in
+ * view, whether it came off the network or out of the cache; `ready` once it
+ * has come into focus; `shown` when it made its entrance earlier this session,
+ * which replays nothing.
+ */
+type Arrival = "loading" | "ready" | "shown";
+
+/**
+ * Pictures that have already made their entrance in this session.
+ *
+ * Switching tabs, or a view rebuilding itself, mounts every cover afresh; one
+ * already seen is shown as it was rather than fading, or worse, shimmering and
+ * coming into focus all over again because it had not finished decoding yet.
+ */
+const SHOWN_LIMIT = 4000;
+const shown = new Set<string>();
+
+function markShown(src: string): void {
+	if (shown.has(src)) return;
+	if (shown.size >= SHOWN_LIMIT) {
+		const oldest = shown.values().next().value;
+		if (oldest !== undefined) shown.delete(oldest);
+	}
+	shown.add(src);
+}
+
+/**
+ * Covers making their entrance, and the order they make it in.
+ *
+ * Each entrance is a blur redrawn every frame until it settles, so it is only
+ * played where someone can see it: a cover the browser fetched ahead of the
+ * scroll is held until it comes into view.
+ *
+ * The browser fetches a shelf's covers side by side and they finish in any
+ * order, so taken as they landed they came in scattered across the grid. They
+ * are let in in reading order instead: a cover that is in waits for any in
+ * view before it that is still loading, though not for long, so one slow
+ * picture does not hold up the shelf. A few are let in a frame, which spreads
+ * the cost and reads as a cascade.
+ */
+const REVEALS_PER_FRAME = 4;
+/** How long an arrived cover waits on a slower one ahead of it. */
+const ORDER_PATIENCE_MS = 500;
+
+interface Entrance {
+	el: HTMLElement;
+	inView: boolean;
+	/** When the picture finished loading, or null while it is still on its way. */
+	arrivedAt: number | null;
+	reveal: () => void;
+	/** Marks it as slow, once it has been in view and still loading a while. */
+	slowTimer: number;
+}
+
+/**
+ * How long a cover in view may keep loading before its placeholder breathes.
+ *
+ * Not from the start: every breathing placeholder is drawn on a layer of its
+ * own, and a shelf of them alongside the covers coming into focus made each
+ * frame several times the work. Only a cover genuinely kept waiting gets one,
+ * and it is set from here, rather than declared in the stylesheet with a delay,
+ * because a declared animation is given its layer even while it waits.
+ */
+const SLOW_MS = 1200;
+
+const entrances = new Map<Element, Entrance>();
+const watchers = new WeakMap<Document, IntersectionObserver>();
+let entranceFrame = 0;
+
+/** One watcher per window, shared by every cover in it. */
+function watcherFor(doc: Document): IntersectionObserver {
+	let watcher = watchers.get(doc);
+	if (!watcher) {
+		watcher = new IntersectionObserver(
+			(seen) => {
+				for (const one of seen) {
+					const entrance = entrances.get(one.target);
+					if (!entrance) continue;
+					entrance.inView = one.isIntersecting;
+					// Set on the element directly: it changes with every scroll, and
+					// is not worth a render of the cover each time it does.
+					window.clearTimeout(entrance.slowTimer);
+					const frame = entrance.el.parentElement;
+					if (!one.isIntersecting) frame?.removeAttribute("data-slow");
+					else if (entrance.arrivedAt === null) {
+						entrance.slowTimer = window.setTimeout(() => {
+							if (entrance.arrivedAt === null) frame?.setAttribute("data-slow", "");
+						}, SLOW_MS);
+					}
+				}
+				wakeEntrances();
+			},
+			{ threshold: 0.05 },
+		);
+		watchers.set(doc, watcher);
+	}
+	return watcher;
+}
+
+function wakeEntrances(): void {
+	if (!entranceFrame) entranceFrame = window.requestAnimationFrame(letEntrancesIn);
+}
+
+const inReadingOrder = (a: Entrance, b: Entrance): number =>
+	a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
+
+function letEntrancesIn(): void {
+	entranceFrame = 0;
+	const now = performance.now();
+	const inView = [...entrances.values()].filter((one) => one.inView).sort(inReadingOrder);
+	let letIn = 0;
+	let waiting = false;
+	let blocked = false;
+	for (const one of inView) {
+		// In a view being drawn ahead, out of sight: in the window as far as the
+		// watcher is concerned, but nobody has seen it, so its entrance waits.
+		if (!one.el.checkVisibility({ visibilityProperty: true })) continue;
+		if (one.arrivedAt === null) {
+			blocked = true;
+			continue;
+		}
+		const patient = now - one.arrivedAt < ORDER_PATIENCE_MS;
+		if ((blocked && patient) || letIn >= REVEALS_PER_FRAME) {
+			waiting = true;
+			continue;
+		}
+		letIn++;
+		leave(one.el);
+		one.reveal();
+	}
+	if (waiting) wakeEntrances();
+}
+
+function leave(el: Element): void {
+	const entrance = entrances.get(el);
+	if (entrance) window.clearTimeout(entrance.slowTimer);
+	entrances.delete(el);
+	watchers.get(el.ownerDocument)?.unobserve(el);
+}
+
+/**
+ * Lines a cover up for its entrance from the moment it is drawn, so the ones
+ * after it know to wait while it loads. Returns how to say it has arrived, and
+ * how to give up its place.
+ */
+function awaitEntrance(
+	el: HTMLElement,
+	reveal: () => void,
+): { arrived: () => void; leave: () => void } {
+	const entrance: Entrance = { el, inView: false, arrivedAt: null, reveal, slowTimer: 0 };
+	entrances.set(el, entrance);
+	watcherFor(el.ownerDocument).observe(el);
+	return {
+		arrived: () => {
+			if (entrance.arrivedAt !== null) return;
+			entrance.arrivedAt = performance.now();
+			wakeEntrances();
+		},
+		leave: () => {
+			if (entrances.get(el) !== entrance) return;
+			leave(el);
+			wakeEntrances();
+		},
+	};
+}
+
+/**
+ * The picture itself, in a frame that shimmers until it arrives.
+ *
+ * It comes into focus as it lands: blurred and a touch large, settling sharp
+ * and to size.
+ */
+function CoverImage({
+	src,
+	alt,
+	className,
+	onFail,
+}: {
+	src: string;
+	alt: string;
+	className: string;
+	onFail: () => void;
+}): React.ReactElement {
+	const img = useRef<HTMLImageElement>(null);
+	const [arrival, setArrival] = useState<Arrival>(() => (shown.has(src) ? "shown" : "loading"));
+	const entrance = useRef<{ arrived: () => void; leave: () => void } | null>(null);
+	const srcSet = useMemo(() => coverSrcSet(src), [src]);
+	useLayoutEffect(() => {
+		const el = img.current;
+		if (!el || shown.has(src)) return;
+		const lined = awaitEntrance(el, () => {
+			markShown(src);
+			setArrival("ready");
+		});
+		entrance.current = lined;
+		// Out of the cache it is already in, and takes its turn like the rest,
+		// rather than jumping the queue or skipping its entrance.
+		if (el.complete && el.naturalWidth > 0) lined.arrived();
+		return () => {
+			entrance.current = null;
+			lined.leave();
+		};
+	}, []);
+	// It keeps its shimmer until its turn comes, rather than going blank.
+	const arrived = (): void => entrance.current?.arrived();
+	return (
+		<span className={`scout-cover scout-cover-frame is-${arrival} ${className}`}>
+			<img
+				ref={img}
+				className="scout-cover-img"
+				src={src}
+				// The host's smaller cuts, for the browser to pick the one that fits
+				// where the cover is drawn: a card is a fraction of the size a
+				// note's cover is stored at.
+				srcSet={srcSet}
+				sizes={srcSet ? "auto, 160px" : undefined}
+				alt={alt}
+				draggable={false}
+				loading="lazy"
+				// Decoded off the main thread, so a shelf being scrolled into view
+				// does not pay for its covers in dropped frames.
+				decoding="async"
+				onLoad={arrived}
+				onError={onFail}
+			/>
+		</span>
 	);
 }
 
@@ -164,6 +404,9 @@ export function useLibraryEntries(index: LibraryIndex): readonly LibraryEntry[] 
 	return index.all();
 }
 
+/** Cards added a frame while a view's first page fills in below the fold. */
+const FILL_CHUNK = 24;
+
 /**
  * How much of a long list to actually put in the page.
  *
@@ -179,39 +422,89 @@ export function useLibraryEntries(index: LibraryIndex): readonly LibraryEntry[] 
 export function useRenderWindow(
 	reset: unknown,
 	step: number,
+	first: number = step,
 ): [number, (el: HTMLElement | null) => void] {
-	const [limit, setLimit] = useState(step);
-	useEffect(() => setLimit(step), [reset, step]);
+	const opening = Math.max(1, Math.min(first, step));
+	// Put back in the same render as the change, not in an effect after it: by
+	// then the new list had already been drawn at the old length, so a switch
+	// made far down a long view drew all of it once before drawing a page.
+	const [page, setPage] = useState({ reset, limit: opening });
+	const current = Object.is(page.reset, reset);
+	if (!current) setPage({ reset, limit: opening });
+	const limit = current ? page.limit : opening;
+
+	/**
+	 * A switch draws a screenful, and the rest of the first page after it.
+	 *
+	 * Every card put in the page is styled before anything is shown, and with a
+	 * vault's worth of themes and plugins each card costs real time to style; a
+	 * page of them was most of the wait for a view to come up. The ones below
+	 * the fold follow a few at a time, frame by frame, where nobody sees them
+	 * arrive.
+	 */
+	useEffect(() => {
+		if (limit >= step) return;
+		let timer = 0;
+		const frame = window.requestAnimationFrame(() => {
+			timer = window.setTimeout(() =>
+				setPage((was) => ({ ...was, limit: Math.min(step, was.limit + FILL_CHUNK) })),
+			);
+		});
+		return () => {
+			window.cancelAnimationFrame(frame);
+			window.clearTimeout(timer);
+		};
+	}, [limit, step]);
 
 	const observer = useRef<IntersectionObserver | null>(null);
-	useEffect(() => () => observer.current?.disconnect(), []);
+	const pending = useRef(0);
+	useEffect(
+		() => () => {
+			observer.current?.disconnect();
+			window.cancelAnimationFrame(pending.current);
+		},
+		[],
+	);
 
 	/**
 	 * The sentinel is re-keyed on every widening, so React hands this a new
 	 * element and the observer starts again. An observer left watching a
 	 * sentinel that is *still* on screen never fires a second time, which would
 	 * stop the list one page short of wherever you had scrolled to.
+	 *
+	 * It is watched from the next frame. Finding the pane that scrolls reads
+	 * styles, and read as the new page was being put in, it made the browser
+	 * style the whole view early, in the middle of the switch.
 	 */
 	const sentinel = useCallback(
 		(el: HTMLElement | null) => {
 			observer.current?.disconnect();
 			observer.current = null;
+			window.cancelAnimationFrame(pending.current);
 			if (!el) return;
-			const io = new IntersectionObserver(
-				(records) => {
-					if (records.some((record) => record.isIntersecting)) {
-						setLimit((current) => current + step);
-					}
-				},
-				// Well before the bottom, so the next page is there by the time
-				// the scroll reaches it. Measured against the pane that scrolls:
-				// against the window, the margin reaches past the pane's edge,
-				// where its overflow already clips the sentinel out of view, so
-				// the next page waited for the bottom and drew in a half row.
-				{ root: scroller(el), rootMargin: "800px 0px" },
-			);
-			io.observe(el);
-			observer.current = io;
+			pending.current = window.requestAnimationFrame(() => {
+				if (!el.isConnected) return;
+				const io = new IntersectionObserver(
+					(records) => {
+						if (records.some((record) => record.isIntersecting)) {
+							// Not while the first page is still filling in behind
+							// the screenful: that is already on its way.
+							setPage((was) =>
+								was.limit < step ? was : { ...was, limit: was.limit + step },
+							);
+						}
+					},
+					// Well before the bottom, so the next page is there by the
+					// time the scroll reaches it. Measured against the pane that
+					// scrolls: against the window, the margin reaches past the
+					// pane's edge, where its overflow already clips the sentinel
+					// out of view, so the next page waited for the bottom and drew
+					// in a half row.
+					{ root: scroller(el), rootMargin: "800px 0px" },
+				);
+				io.observe(el);
+				observer.current = io;
+			});
 		},
 		[step],
 	);
@@ -267,10 +560,11 @@ export function useProviderData<T>(
 ): Async<T> {
 	// Loading from the first render when there is something to load, so a
 	// placeholder shows at once rather than after an empty frame.
-	const [state, setState] = useState<Async<T>>({
+	const [state, setState] = useState<Async<T> & { key: string }>({
 		data: null,
 		loading: load !== null,
 		error: null,
+		key,
 	});
 	const latest = useRef(load);
 	latest.current = load;
@@ -278,16 +572,16 @@ export function useProviderData<T>(
 	useEffect(() => {
 		const run = latest.current;
 		if (!run) {
-			setState({ data: null, loading: false, error: null });
+			setState({ data: null, loading: false, error: null, key });
 			return;
 		}
 		const controller = new AbortController();
-		setState({ data: null, loading: true, error: null });
+		setState({ data: null, loading: true, error: null, key });
 
 		run(controller.signal)
 			.then((data) => {
 				if (!controller.signal.aborted) {
-					setState({ data, loading: false, error: null });
+					setState({ data, loading: false, error: null, key });
 				}
 			})
 			.catch((err: unknown) => {
@@ -300,12 +594,19 @@ export function useProviderData<T>(
 						err instanceof Error
 							? err.message
 							: "Could not load this from the source.",
+					key,
 				});
 			});
 
 		return () => controller.abort();
 	}, [key]);
 
+	// The render after the key changes comes before the effect that fetches for
+	// it. Answering with the old key's state there showed the previous answer for
+	// a frame, and said nothing was loading when something was about to.
+	if (state.key !== key) {
+		return { data: null, loading: load !== null, error: null };
+	}
 	return state;
 }
 
@@ -317,4 +618,28 @@ export function useDebounced<T>(value: T, delayMs: number): T {
 		return () => window.clearTimeout(timer);
 	}, [value, delayMs]);
 	return debounced;
+}
+
+/** A Home section's heading: icon, title, a quiet note, and an action at the end. */
+export function SectionHead({
+	title,
+	icon,
+	note,
+	action,
+}: {
+	title: string;
+	icon: string;
+	note?: string;
+	action?: React.ReactNode;
+}): React.ReactElement {
+	return (
+		<div className="scout-home-section-head">
+			<h3>
+				<Icon name={icon} size={14} />
+				{title}
+			</h3>
+			{note && <span className="scout-home-note">{note}</span>}
+			{action}
+		</div>
+	);
 }

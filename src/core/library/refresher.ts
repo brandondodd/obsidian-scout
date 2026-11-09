@@ -5,6 +5,7 @@ import type { ProviderRegistry } from "../registry";
 import type { ScoutSettings } from "../settings/store";
 import type { LibraryEntry } from "./entry";
 import type { LibraryIndex } from "./indexer";
+import { scheduleRuns } from "./schedule";
 import { LibraryMutator, today } from "./mutate";
 import {
 	dueEntries,
@@ -44,7 +45,6 @@ export interface RefreshReport {
 }
 
 export class LibraryRefresher {
-	private timer: number | null = null;
 	private running = false;
 
 	constructor(
@@ -56,22 +56,9 @@ export class LibraryRefresher {
 
 	/** Starts the background schedule, if the user has it turned on. */
 	start(plugin: Plugin): void {
-		const tick = () => {
+		scheduleRuns(plugin, FIRST_RUN_DELAY_MS, RUN_EVERY_MS, () => {
 			if (!this.settings.library().autoRefresh) return;
 			void this.runDue();
-		};
-
-		this.timer = window.setTimeout(() => {
-			tick();
-			this.timer = window.setInterval(tick, RUN_EVERY_MS);
-			plugin.register(() => {
-				if (this.timer !== null) window.clearInterval(this.timer);
-			});
-		}, FIRST_RUN_DELAY_MS);
-
-		plugin.register(() => {
-			if (this.timer !== null) window.clearTimeout(this.timer);
-			this.timer = null;
 		});
 	}
 

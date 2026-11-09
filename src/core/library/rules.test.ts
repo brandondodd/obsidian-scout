@@ -33,6 +33,8 @@ function entry(
 		history: [],
 		episodeLog: {},
 		collections: [],
+		moods: [],
+		themes: [],
 		created: now.getTime(),
 		modified: now.getTime(),
 		frontmatter: {},

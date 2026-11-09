@@ -3,6 +3,7 @@ import { AI_SCOPE } from "../../ai/assistant";
 import { MANAGE_USAGE_URL } from "../../ai/chatgpt";
 import type { AiModel } from "../../ai/providers";
 import { toggle } from "../controls";
+import { aiLibrarySettings } from "./aiLibrary";
 import type { SettingsSection } from "./types";
 
 /** Model lists fetched this session, so a redraw does not ask again. */
@@ -17,8 +18,8 @@ export const aiSection: SettingsSection = (container, ctx) => {
 
 	group.addSetting(
 		toggle({
-			name: "Ask your library",
-			desc: "Type a question like “sci-fi I loved from the 90s” and open the library filtered to the answer. Sends only the question and the names of the types, statuses, genres and collections your library uses — never titles, notes, ratings or people. Off by default.",
+			name: "Ask Scout",
+			desc: "Adds an Ask bar to Home, and a sparkles button to the library's search box. A question like “sci-fi I loved from the 90s” opens the library filtered to the answer. Sends only the question and the names of the types, statuses, genres and collections your library uses — never titles, notes, ratings or people. Off by default.",
 			value: enabled,
 			onChange: async (v) => {
 				await scope.set("enabled", v);
@@ -185,6 +186,22 @@ export const aiSection: SettingsSection = (container, ctx) => {
 		);
 	});
 
+	group.addSetting((s) => {
+		s.setName("Fast model").setDesc(
+			"Used for tagging and for turning questions into filters, where a quicker, cheaper model does as well. Empty uses the model above.",
+		);
+		s.addText((t) => {
+			t.setPlaceholder(assistant.model(provider) || "Same as model")
+				.setValue(assistant.fastModel(provider))
+				.onChange((v) => void scope.set(`fastModel:${provider.id}`, v.trim()));
+			if (models.length) t.inputEl.setAttr("list", `scout-ai-models-${provider.id}`);
+		});
+	});
+
 	const missing = assistant.missing(provider);
-	if (missing) group.addSetting((s) => s.setName("Not ready yet").setDesc(missing));
+	if (missing) {
+		group.addSetting((s) => s.setName("Not ready yet").setDesc(missing));
+		return;
+	}
+	aiLibrarySettings(group, ctx);
 };

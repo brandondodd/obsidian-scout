@@ -15,7 +15,8 @@ import { parseAnswer } from "./wire";
  * folder rather than the vault. It can only answer.
  */
 
-const TIMEOUT_MS = 120_000;
+// A batch of forty titles takes a slow model a while; a single question never comes close.
+const TIMEOUT_MS = 180_000;
 
 export interface ClaudeCodeStatus {
 	loggedIn: boolean;
@@ -96,8 +97,8 @@ export class ClaudeCode {
 		};
 	}
 
-	async complete<T>(model: string, request: AiRequest): Promise<T> {
-		const out = await run(await this.binary(), claudeArgs(model, request), request.prompt, TIMEOUT_MS);
+	async complete<T>(model: string, request: AiRequest, signal?: AbortSignal): Promise<T> {
+		const out = await run(await this.binary(), claudeArgs(model, request), request.prompt, TIMEOUT_MS, signal);
 		return claudeAnswer<T>(out);
 	}
 
@@ -142,15 +143,19 @@ export class ClaudeCode {
 }
 
 /** Runs a program without a shell, feeding `input` and returning its output. */
-function run(file: string, args: string[], input: string, timeoutMs: number): Promise<string> {
+function run(file: string, args: string[], input: string, timeoutMs: number, signal?: AbortSignal): Promise<string> {
 	const { execFile } = require("child_process") as typeof import("child_process");
 	const os = require("os") as typeof import("os");
 	return new Promise((resolve, reject) => {
 		const child = execFile(
 			file,
 			args,
-			{ cwd: os.tmpdir(), timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024, windowsHide: true },
+			{ cwd: os.tmpdir(), timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024, windowsHide: true, signal },
 			(err, stdout, stderr) => {
+				if (signal?.aborted) {
+					reject(new Error("Stopped."));
+					return;
+				}
 				// A failed answer still prints its JSON; let the caller read it.
 				if (err && !stdout.trim()) {
 					const reason = (err as { killed?: boolean }).killed ? "Claude Code took too long to answer." : stderr.trim() || err.message;

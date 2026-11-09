@@ -13,7 +13,7 @@ const SCHEMA_NAME = "answer";
 export function anthropicBody(model: string, request: AiRequest): unknown {
 	return {
 		model,
-		max_tokens: 2048,
+		max_tokens: request.maxTokens ?? 2048,
 		system: request.system,
 		messages: [{ role: "user", content: request.prompt }],
 		output_config: { format: { type: "json_schema", schema: request.schema } },

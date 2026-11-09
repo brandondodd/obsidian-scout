@@ -39,6 +39,8 @@ export type RuleField =
 	| "genre"
 	| "person"
 	| "collection"
+	| "mood"
+	| "theme"
 	| "year"
 	| "rating"
 	| "sourceRating"
@@ -123,6 +125,8 @@ export const RULE_FIELDS: Record<
 	genre: { label: "Genre", type: "list" },
 	person: { label: "Person", type: "list" },
 	collection: { label: "Collection", type: "list" },
+	mood: { label: "Mood", type: "list" },
+	theme: { label: "Theme", type: "list" },
 	year: { label: "Year", type: "number" },
 	rating: { label: "Your rating", type: "number" },
 	sourceRating: { label: "Scout score", type: "number" },
@@ -287,6 +291,10 @@ function fieldValue(
 			return entry.people;
 		case "collection":
 			return entry.collections;
+		case "mood":
+			return entry.moods;
+		case "theme":
+			return entry.themes;
 		case "year":
 			return entry.year;
 		case "rating":

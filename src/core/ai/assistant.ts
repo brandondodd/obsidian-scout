@@ -3,7 +3,15 @@ import { HttpError, type HttpClient } from "../http";
 import type { ScoutSettings } from "../settings/store";
 import { ChatGptSession } from "./chatgpt";
 import { ClaudeCode } from "./claudeCode";
-import { AI_PROVIDERS, aiProvider, type AiModel, type AiProvider, type AiRequest } from "./providers";
+import {
+	AI_PROVIDERS,
+	aiProvider,
+	type AiModel,
+	type AiProvider,
+	type AiRequest,
+	type AskOptions,
+	type ModelTier,
+} from "./providers";
 import { anthropicBody, anthropicText, chatBody, chatText, modelList, parseAnswer } from "./wire";
 
 export const AI_SCOPE = "ai";
@@ -37,6 +45,33 @@ export class Assistant {
 		return this.scope.get("enabled", false);
 	}
 
+	/**
+	 * The second consent: whether titles, years, genres, statuses and ratings
+	 * may be sent. Off by default, and separate from `enabled`, which only ever
+	 * sends a question and the names of the library's filters.
+	 */
+	sharing(): boolean {
+		return this.scope.get("shareLibrary", false);
+	}
+
+	/** Ready, and allowed to see the library: what tagging and threads need. */
+	canShare(): boolean {
+		return this.sharing() && this.ready();
+	}
+
+	/** Whether to offer sharing at the point of use: on, set up, not yet allowed, not declined. */
+	shouldOfferSharing(): boolean {
+		return this.ready() && !this.sharing() && !this.scope.get("sharingDeclined", false);
+	}
+
+	async allowSharing(): Promise<void> {
+		await this.scope.set("shareLibrary", true);
+	}
+
+	async declineSharing(): Promise<void> {
+		await this.scope.set("sharingDeclined", true);
+	}
+
 	/** Services this device can use. A plan sign-in needs a desktop. */
 	providers(): AiProvider[] {
 		return AI_PROVIDERS.filter((p) => !p.desktopOnly || Platform.isDesktopApp);
@@ -47,8 +82,16 @@ export class Assistant {
 		return chosen && this.providers().includes(chosen) ? chosen : this.providers()[0]!;
 	}
 
-	model(provider = this.provider()): string {
-		return this.scope.get<string>(`model:${provider.id}`, "").trim();
+	/** The model for a tier. An empty fast model means the main one. */
+	model(provider = this.provider(), tier: ModelTier = "main"): string {
+		const main = this.scope.get<string>(`model:${provider.id}`, "").trim();
+		if (tier === "main") return main;
+		return this.fastModel(provider) || main;
+	}
+
+	/** The fast model as set, empty when it falls back to the main one. */
+	fastModel(provider = this.provider()): string {
+		return this.scope.get<string>(`fastModel:${provider.id}`, "").trim();
 	}
 
 	key(provider = this.provider()): string {
@@ -89,18 +132,23 @@ export class Assistant {
 		return modelList(body);
 	}
 
-	/** Asks the chosen model one question and returns its JSON answer. */
-	async ask<T>(request: AiRequest): Promise<T> {
+	/**
+	 * Asks the chosen model one question and returns its JSON answer.
+	 *
+	 * The answer is parsed, not trusted: every caller checks it against what it
+	 * asked for before using any of it.
+	 */
+	async ask<T>(request: AiRequest, { tier = "main", signal }: AskOptions = {}): Promise<T> {
 		const provider = this.provider();
-		const model = this.model(provider);
+		const model = this.model(provider, tier);
 		const missing = this.missing(provider);
 		if (missing) throw new Error(missing);
 
-		if (provider.wire === "chatgpt") return this.chatgpt.complete<T>(model, request);
-		if (provider.wire === "claude-code") return this.claudeCode.complete<T>(model, request);
+		if (provider.wire === "chatgpt") return this.chatgpt.complete<T>(model, request, signal);
+		if (provider.wire === "claude-code") return this.claudeCode.complete<T>(model, request, signal);
 
 		const url = this.baseUrl(provider);
-		const options = { headers: this.headers(provider), retries: 1 };
+		const options = { headers: this.headers(provider), retries: 1, signal };
 		if (provider.wire === "anthropic") {
 			const body = await this.http.postJson(`${url}/messages`, anthropicBody(model, request), options);
 			return parseAnswer<T>(anthropicText(body));

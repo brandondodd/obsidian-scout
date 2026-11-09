@@ -8,7 +8,9 @@ import { episodeKey } from "../../../core/library/episodes";
 import type { EpisodeInfo } from "../../../core/types";
 import Rating from "../Rating";
 import { Icon } from "../shared";
+import { useDismiss } from "../library/useDismiss";
 import { Facts, Picture, Sep } from "./bits";
+import { useEscape } from "./useEscape";
 
 export const rowId = (season: number, episode: number): string =>
 	`sd-ep-${episodeKey(season, episode)}`;
@@ -32,6 +34,11 @@ function RateControl({
 	const config = ctx.settings.library();
 	const mark = entry.episodeLog[code];
 	const scale = ratingScaleFor(config, entry.kind);
+	const picker = useRef<HTMLSpanElement>(null);
+	// A press elsewhere, or Escape, folds the stars away; Escape no longer
+	// closes the whole dialog with them.
+	useDismiss(picker, open, onDone);
+	useEscape(ctx.app, open, onDone);
 	const write = (rating: number | null) => {
 		void ctx.mutator.setEpisodeMark(entry, code, {
 			...(rating !== null ? { rating } : {}),
@@ -42,7 +49,7 @@ function RateControl({
 
 	if (open) {
 		return (
-			<span className="sd-ctl">
+			<span className="sd-ctl" ref={picker}>
 				<Rating
 					value={mark?.rating}
 					scale={scale}
@@ -100,13 +107,24 @@ function NoteControl({
 	const note = mark?.note ?? "";
 	const [text, setText] = useState(note);
 	const box = useRef<HTMLTextAreaElement>(null);
+	const discarded = useRef(false);
 
 	useEffect(() => setText(note), [note]);
 	useEffect(() => {
-		if (open) box.current?.focus();
+		if (!open) return;
+		discarded.current = false;
+		box.current?.focus();
 	}, [open]);
+	// Escape drops the edit, and only the edit: left to the dialog it closed
+	// everything, saving the half-typed line on the way out.
+	useEscape(ctx.app, open, () => {
+		discarded.current = true;
+		setText(note);
+		onDone();
+	});
 
 	const save = () => {
+		if (discarded.current) return;
 		const next = text.trim();
 		if (next !== note) {
 			void ctx.mutator.setEpisodeMark(entry, code, {

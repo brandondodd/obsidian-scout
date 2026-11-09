@@ -3,12 +3,15 @@ import React from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { ScoutContext } from "../core/context";
 import HomeViewComponent from "./components/HomeView";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 export const HOME_VIEW_TYPE = "scout-home";
 
 /** Workspace view hosting the hub. */
 export class ScoutHomeView extends ItemView {
 	private root: Root | null = null;
+	/** Bumped to put the cursor in the Ask bar — see `openHome`. */
+	private askNonce = 0;
 
 	constructor(
 		leaf: WorkspaceLeaf,
@@ -35,8 +38,22 @@ export class ScoutHomeView extends ItemView {
 		container.addClass("scout-home-container");
 
 		this.root = createRoot(container);
-		this.root.render(
-			React.createElement(HomeViewComponent, { ctx: this.ctx }),
+		this.render();
+	}
+
+	/** Focuses the Ask bar, when there is one. */
+	focusAsk(): void {
+		this.askNonce += 1;
+		this.render();
+	}
+
+	private render(): void {
+		this.root?.render(
+			React.createElement(
+				ErrorBoundary,
+				{ what: "home page" },
+				React.createElement(HomeViewComponent, { ctx: this.ctx, askNonce: this.askNonce }),
+			),
 		);
 	}
 
@@ -48,11 +65,12 @@ export class ScoutHomeView extends ItemView {
 }
 
 /** Focuses the hub, reusing the open one rather than stacking duplicates. */
-export async function openHome(app: App): Promise<void> {
+export async function openHome(app: App, { ask = false } = {}): Promise<void> {
 	const existing = app.workspace.getLeavesOfType(HOME_VIEW_TYPE);
 	const leaf = existing[0] ?? app.workspace.getLeaf("tab");
 	if (!existing[0]) {
 		await leaf.setViewState({ type: HOME_VIEW_TYPE, active: true });
 	}
 	await app.workspace.revealLeaf(leaf);
+	if (ask && leaf.view instanceof ScoutHomeView) leaf.view.focusAsk();
 }

@@ -1,7 +1,14 @@
 import { Component, MarkdownRenderer } from "obsidian";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useRef,
+	useState,
+} from "react";
 import type { ScoutContext } from "../../../core/context";
 import type { LibraryEntry } from "../../../core/library/entry";
+import { useEscape } from "./useEscape";
 
 /** Autosave delay. Long enough not to fight typing. */
 const SAVE_DELAY = 700;
@@ -25,7 +32,9 @@ function RenderedThoughts({
 }): React.ReactElement {
 	const box = useRef<HTMLDivElement>(null);
 
-	useEffect(() => {
+	// Before paint: rendered after it, the box was drawn empty for a frame and
+	// then grew, pushing everything under it down.
+	useLayoutEffect(() => {
 		const el = box.current;
 		if (!el) return;
 		const owner = new Component();
@@ -151,6 +160,9 @@ export function Thoughts({
 		}
 		setEditing(false);
 	};
+	// Escape puts the text area away, keeping what was written, rather than
+	// closing the dialog around it.
+	useEscape(ctx.app, editing, leave);
 
 	return (
 		<div className="sd-row sd-stack">

@@ -12,6 +12,7 @@ import {
 } from "./enrich";
 import { feedbackKey, pruneFeedback } from "./feedback";
 import type { LibraryIndex } from "./indexer";
+import { scheduleRuns } from "./schedule";
 
 /**
  * Going and finding out what your library is actually made of.
@@ -57,7 +58,6 @@ export interface EnrichReport {
 }
 
 export class LibraryEnricher {
-	private timer: number | null = null;
 	private running = false;
 
 	constructor(
@@ -68,22 +68,9 @@ export class LibraryEnricher {
 
 	/** Starts the background schedule, if the user has it turned on. */
 	start(plugin: Plugin): void {
-		const tick = () => {
+		scheduleRuns(plugin, FIRST_RUN_DELAY_MS, RUN_EVERY_MS, () => {
 			if (!this.settings.library().enrichSuggestions) return;
 			void this.runDue();
-		};
-
-		this.timer = window.setTimeout(() => {
-			tick();
-			this.timer = window.setInterval(tick, RUN_EVERY_MS);
-			plugin.register(() => {
-				if (this.timer !== null) window.clearInterval(this.timer);
-			});
-		}, FIRST_RUN_DELAY_MS);
-
-		plugin.register(() => {
-			if (this.timer !== null) window.clearTimeout(this.timer);
-			this.timer = null;
 		});
 	}
 

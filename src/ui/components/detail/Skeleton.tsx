@@ -1,4 +1,5 @@
 import React from "react";
+import { Picture } from "./bits";
 
 /**
  * Placeholders for what the source has yet to send.
@@ -127,6 +128,55 @@ export function MoreSkeleton({
 				</div>
 			</section>
 		</>
+	);
+}
+
+/**
+ * The dialog's frame while its sources answer: the artwork and title, which
+ * are already known, and room for the rest. Laid over the real dialog, which
+ * is built underneath and shown whole when they have.
+ */
+export function DetailSkeleton({
+	title,
+	cover,
+	shape,
+}: {
+	title: string;
+	cover: string | undefined;
+	/** The poster's shape class, as the header's own. */
+	shape: string;
+}): React.ReactElement {
+	return (
+		<div className="sd-skeleton" aria-hidden="true">
+			<div className="sd-hero">
+				<div className="sd-hero-in">
+					<div className={`sd-poster${shape}`}>
+						<Picture src={cover} seed={title} className="sd-pimg sd-solo" />
+					</div>
+					<div className="sd-head">
+						<h2>{title}</h2>
+						<Bone w={240} h={14} className="sd-skel-meta" />
+						<div className="sd-scores">
+							<ScoresSkeleton />
+						</div>
+						<div className="sd-actions">
+							<Bone w={136} h={36} />
+							<Bone w={96} h={36} />
+						</div>
+					</div>
+				</div>
+			</div>
+			<div className="sd-tabs">
+				{[64, 72, 86].map((w) => (
+					<Bone key={w} w={w} h={14} className="sd-skel-tab" />
+				))}
+			</div>
+			<div className="sd-body sd-skel-body">
+				{["100%", "97%", "99%", "58%"].map((w, at) => (
+					<Bone key={at} w={w} h={13} />
+				))}
+			</div>
+		</div>
 	);
 }
 

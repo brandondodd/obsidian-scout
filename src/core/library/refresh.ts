@@ -60,6 +60,8 @@ const NEVER_WRITTEN: readonly FieldKey[] = [
 	"kind",
 	"provider",
 	"id",
+	"moods",
+	"themes",
 ];
 
 /** Placeholders about the moment of writing rather than about the item. */

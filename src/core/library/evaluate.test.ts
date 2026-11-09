@@ -110,3 +110,24 @@ describe("recordingPort", () => {
 		expect(asked).toEqual(["similar:1"]);
 	});
 });
+
+describe("tasteCheck with and without moods and themes", () => {
+	/**
+	 * The gate the AI traits have to pass, in miniature: a library whose genres
+	 * say nothing about what you like (everything is a Drama) but whose moods
+	 * and themes do. With them, the model should separate likes from dislikes;
+	 * without them, it should be no better than a coin. The real vault's
+	 * version of this is the Evaluate suggestions command after a tagging run.
+	 */
+	it("measures what the AI traits add", () => {
+		const entries = [];
+		for (let i = 0; i < 12; i++) {
+			entries.push(entry({ rating: 9, status: "Watched", tags: ["Drama"], moods: ["tender"], themes: ["grief"] }));
+			entries.push(entry({ rating: 2, status: "Watched", tags: ["Drama"], moods: ["violent"], themes: ["war"] }));
+		}
+		const withAi = tasteCheck(config, entries, { now: NOW, folds: 4 });
+		const without = tasteCheck(config, entries, { now: NOW, folds: 4, traitOptions: { aiTraits: false } });
+		expect(withAi.fit).toBeGreaterThan(0.9);
+		expect(without.fit).toBeCloseTo(0.5, 1);
+	});
+});

@@ -339,8 +339,19 @@ export function exactHypeOfEntry(
 	now: number = Date.now(),
 ): number | undefined {
 	if (entry.kind !== "movie" || exactScoutOfEntry(entry, now) !== undefined) return undefined;
-	return hypeOf(entry.outlook, entry, now)?.value;
+	// Worked out once a note and an hour, as Scout's score is: sorting a shelf
+	// asks every film for it many times over. A note is a fresh object when it
+	// changes, so this never answers for a note as it was before an edit.
+	const hour = Math.floor(now / HOUR);
+	const kept = exactHypes.get(entry);
+	if (kept?.hour === hour) return kept.value;
+	const value = hypeOf(entry.outlook, entry, now)?.value;
+	exactHypes.set(entry, { hour, value });
+	return value;
 }
+
+const HOUR = 3_600_000;
+const exactHypes = new WeakMap<object, { hour: number; value: number | undefined }>();
 
 /** A library note's hype, to one decimal: only a film with no Scout score. */
 export function hypeOfEntry(

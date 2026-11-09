@@ -41,6 +41,11 @@ export interface EpisodeView {
 	/** The score bars and rows use: never "You", which has its own control. */
 	publicName: string | null;
 	episodes: Async<EpisodeInfo[]>;
+	/**
+	 * The season's public scores are on their way. They come from a second
+	 * source, and landing after the list they drew the summary in above it.
+	 */
+	scoresLoading: boolean;
 	/** The public score for an episode. */
 	scoreOf: (episode: EpisodeInfo) => number | undefined;
 	grid: Async<GridSeason[]>;
@@ -143,6 +148,7 @@ export function useEpisodeView(
 		setSource: setChosen,
 		publicName: publicSource ? NAMES[publicSource] : null,
 		episodes,
+		scoresLoading: imdb.loading,
 		scoreOf: (episode) =>
 			publicSource === "imdb"
 				? imdb.data?.get(episode.number)

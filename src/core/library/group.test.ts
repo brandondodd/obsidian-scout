@@ -21,6 +21,8 @@ function entry(title: string, overrides: Partial<LibraryEntry> = {}): LibraryEnt
 		history: [],
 		episodeLog: {},
 		collections: [],
+		moods: [],
+		themes: [],
 		created: 0,
 		modified: 0,
 		frontmatter: {},

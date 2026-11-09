@@ -1,4 +1,4 @@
-import { Menu, Notice } from "obsidian";
+import { Menu, Notice, Platform } from "obsidian";
 import React, {
 	useCallback,
 	useEffect,
@@ -58,9 +58,19 @@ import { ScoutOrganiseModal } from "../organiseModal";
 import { ScoutSearchModal } from "../searchModal";
 import MediaCard from "./Card";
 import { FilterBar, type SaveState } from "./library/FilterBar";
-import { OrderPills } from "./library/OrderPills";
-import { Board } from "./library/Board";
-import { EntryTable, SourceRating } from "./library/EntryTable";
+import { AiNoteLine, SparkleButton, useLibraryAsk } from "./library/AskSparkle";
+import { DisplayButton, LAYOUT_ICONS, OrderPills } from "./library/OrderPills";
+import {
+	cutShelves,
+	Pane,
+	paneFor,
+	paneKey,
+	Shelves,
+	usePanes,
+	type CardRenderer,
+	type PaneState,
+} from "./library/Panes";
+import { SourceRating } from "./library/EntryTable";
 import { entryMainGenres } from "../../core/genres/genres";
 import CollectionsPage from "./Collections";
 import Rating, { formatRating } from "./Rating";
@@ -87,13 +97,6 @@ import {
  * another device shows up here with no sync step.
  */
 
-const LAYOUT_ICONS: Record<LibraryLayout, string> = {
-	grid: "layout-grid",
-	list: "rows",
-	table: "table",
-	board: "kanban",
-};
-
 /**
  * How many cards go in at a time.
  *
@@ -102,6 +105,71 @@ const LAYOUT_ICONS: Record<LibraryLayout, string> = {
  * happens out of sight, not that the list is short.
  */
 const PAGE = 120;
+
+/** The grid's gap, as `.scout-entries-grid` sets it. */
+const GRID_GAP = 14;
+/** A card's title, meta line and foot, under its 2:3 cover. */
+const CARD_TEXT = 80;
+/**
+ * A phone's grid is three across whatever the card size says, as
+ * `body.is-phone .scout-library .scout-entries-grid` sets it — the size is a
+ * desktop preference, and on a phone it would mean one card or two.
+ */
+const PHONE_COLUMNS = 3;
+/** A list row, at its tallest. */
+const LIST_ROW = 64;
+
+/**
+ * Roughly how many cards fill the view, with a row to spare.
+ *
+ * Over rather than under: a card short shows an empty corner for a frame, a
+ * card over costs one card. A table or board, or a view not measured yet, has
+ * the whole first page.
+ */
+function screenful(layout: LibraryLayout, cardSize: number, room: Room | null): number {
+	if (!room || room.width <= 0) return PAGE;
+	if (layout === "list") return Math.ceil(room.height / LIST_ROW) + 2;
+	if (layout !== "grid") return PAGE;
+	const columns = Platform.isPhone
+		? PHONE_COLUMNS
+		: Math.max(1, Math.floor((room.width + GRID_GAP) / (cardSize + GRID_GAP)));
+	const cardWidth = (room.width - (columns - 1) * GRID_GAP) / columns;
+	const row = cardWidth * 1.5 + CARD_TEXT + GRID_GAP;
+	return columns * (Math.ceil(room.height / row) + 1);
+}
+
+interface Room {
+	width: number;
+	height: number;
+}
+
+/**
+ * How much room the list has: its width, and the height of the window it is
+ * in, which is as much of it as can be on screen. Watched rather than measured
+ * on a switch, so a switch never waits on a layout to find out.
+ */
+function useRoom(): [Room | null, (el: HTMLElement | null) => void] {
+	const [room, setRoom] = useState<Room | null>(null);
+	const watcher = useRef<ResizeObserver | null>(null);
+	useEffect(() => () => watcher.current?.disconnect(), []);
+	const measure = useCallback((el: HTMLElement | null) => {
+		watcher.current?.disconnect();
+		watcher.current = null;
+		if (!el) return;
+		const view = el.ownerDocument.defaultView;
+		const observer = new ResizeObserver((records) => {
+			const box = records[records.length - 1]?.contentRect;
+			if (!box) return;
+			const next = { width: Math.round(box.width), height: view?.innerHeight ?? 0 };
+			setRoom((was) =>
+				was && was.width === next.width && was.height === next.height ? was : next,
+			);
+		});
+		observer.observe(el);
+		watcher.current = observer;
+	}, []);
+	return [room, measure];
+}
 
 export interface LibraryViewProps {
 	ctx: ScoutContext;
@@ -204,7 +272,12 @@ export default function LibraryView({
 		}
 	};
 
+	/** A named set of notes from elsewhere — a thread — narrowing whatever else is set. */
+	const [scope, setScope] = useState<{ label: string; paths: ReadonlySet<string> } | null>(null);
+
 	const applyView = (view: SavedView | null) => {
+		setScope(null);
+		aiAsk.setLine(null);
 		setActiveId(view?.id ?? null);
 		setPage("library");
 		setText("");
@@ -213,15 +286,21 @@ export default function LibraryView({
 
 	// Opened from elsewhere with a question — a genre, a person — to answer
 	// against the whole library rather than whatever tab was last open.
-	const focusNonce = focus?.nonce;
-	useEffect(() => {
-		if (!focus) return;
-		const { text: words, ...narrowing } = focus.query;
+	const applyFocus = (query: LibraryFocus) => {
+		const { text: words, scope: named, note, ...narrowing } = query;
+		setScope(named ? { label: named.label, paths: new Set(named.paths) } : null);
 		setActiveId(null);
 		setPage("library");
 		setText(words ?? "");
 		setFilters({ ...emptyFilters(), ...narrowing });
 		setExtra(emptyRule());
+		aiAsk.setLine(note ? { summary: note.summary, unknown: note.unknown } : null);
+	};
+	// The search box's sparkle: the typed words as filters, here and now.
+	const aiAsk = useLibraryAsk(ctx, applyFocus);
+	const focusNonce = focus?.nonce;
+	useEffect(() => {
+		if (focus) applyFocus(focus.query);
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [focusNonce]);
 
@@ -245,7 +324,11 @@ export default function LibraryView({
 	const visible = useMemo(
 		() =>
 			viewEntries(
-				filterEntries(entries, effective, config),
+				filterEntries(
+					scope ? entries.filter((entry) => scope.paths.has(entry.path)) : entries,
+					effective,
+					config,
+				),
 				{
 					rule: extra,
 					sortBy,
@@ -253,7 +336,7 @@ export default function LibraryView({
 				},
 				config,
 			),
-		[entries, effective, extra, sortBy, config, version, active?.limit],
+		[entries, scope, effective, extra, sortBy, config, version, active?.limit],
 	);
 
 	const groups = useMemo(
@@ -271,13 +354,16 @@ export default function LibraryView({
 	/** Shelves folded shut, by key — opened again when the grouping changes. */
 	const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
 	useEffect(() => setCollapsed(new Set()), [groupBy]);
-	const toggleFold = (key: string) =>
-		setCollapsed((was) => {
-			const next = new Set(was);
-			if (next.has(key)) next.delete(key);
-			else next.add(key);
-			return next;
-		});
+	const toggleFold = useCallback(
+		(key: string) =>
+			setCollapsed((was) => {
+				const next = new Set(was);
+				if (next.has(key)) next.delete(key);
+				else next.add(key);
+				return next;
+			}),
+		[],
+	);
 
 	/** A board needs groups to make columns of; ungrouped, it is a list. */
 	const drawnAs: LibraryLayout = layout === "board" && groupBy === "none" ? "list" : layout;
@@ -290,38 +376,46 @@ export default function LibraryView({
 	 * everything past the first page and threw the scroll back up the list.
 	 */
 	const question = useMemo(
-		() => JSON.stringify([effective, extra, activeId, active?.limit ?? null]),
-		[effective, extra, activeId, active?.limit],
+		() => JSON.stringify([effective, extra, activeId, active?.limit ?? null, scope?.label ?? null]),
+		[effective, extra, activeId, active?.limit, scope],
 	);
-	const [limit, sentinel] = useRenderWindow(question, PAGE);
-	const shelves = useMemo(() => {
-		const out: {
-			key: string;
-			label: string;
-			total: number;
-			entries: LibraryEntry[];
-		}[] = [];
-		let room = limit;
-		for (const group of groups) {
-			if (room <= 0) break;
-			if (collapsed.has(group.key)) {
-				out.push({ key: group.key, label: group.label, total: group.entries.length, entries: [] });
-				continue;
-			}
-			out.push({
-				key: group.key,
-				label: group.label,
-				total: group.entries.length,
-				entries:
-					group.entries.length <= room
-						? group.entries
-						: group.entries.slice(0, room),
-			});
-			room -= group.entries.length;
-		}
-		return out;
-	}, [groups, limit, collapsed]);
-	const drawn = shelves.reduce((sum, shelf) => sum + shelf.entries.length, 0);
+	const [room, measureRoom] = useRoom();
+
+	/**
+	 * Every view already drawn, kept in the page, and the saved views drawn
+	 * ahead while the window is idle; see `usePanes`. Only a view as it was
+	 * saved is drawn ahead, which is what opening it shows.
+	 */
+	const liveKey = page === "library" && visible.length > 0 ? paneKey(activeId) : null;
+	const prepare = useMemo(
+		() =>
+			[null, ...views].map((view) => ({
+				key: paneKey(view?.id ?? null),
+				make: () => paneFor(view, entries, config, PAGE),
+			})),
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+		[views, entries, config, version],
+	);
+	const keptPanes = useRef<(key: string) => PaneState | undefined>(() => undefined);
+	const keptLimit = liveKey === null ? undefined : keptPanes.current(liveKey)?.limit;
+
+	const [limit, sentinel] = useRenderWindow(
+		question,
+		PAGE,
+		// A view already drawn opens as long as it was, so none of it is
+		// taken out and put back.
+		keptLimit ?? screenful(drawnAs, cardSize, room),
+	);
+	const livePane = useMemo<PaneState>(
+		() => ({ groups, limit, collapsed, drawnAs, cardSize, scoutFirst, sortBy }),
+		[groups, limit, collapsed, drawnAs, cardSize, scoutFirst, sortBy],
+	);
+	const { panes, kept } = usePanes(liveKey, liveKey === null ? null : livePane, prepare);
+	keptPanes.current = kept;
+	const drawn = useMemo(
+		() => cutShelves(groups, limit, collapsed).reduce((sum, shelf) => sum + shelf.entries.length, 0),
+		[groups, limit, collapsed],
+	);
 	const held = groups.reduce((sum, group) => sum + group.entries.length, 0);
 
 	const stats = useMemo(
@@ -644,6 +738,24 @@ export default function LibraryView({
 			handlers.current.menu(entry, event),
 		[],
 	);
+	const sortHandler = useRef(setOrder);
+	sortHandler.current = setOrder;
+	const onSort = useCallback((next: LibrarySort) => sortHandler.current({ sortBy: next }), []);
+	const card = useCallback<CardRenderer>(
+		(entry, drawnLayout, firstScout) => (
+			<EntryCard
+				key={entry.path}
+				ctx={ctx}
+				entry={entry}
+				layout={drawnLayout}
+				scoutFirst={firstScout}
+				version={version}
+				onOpen={onOpen}
+				onMenu={onMenu}
+			/>
+		),
+		[ctx, version, onOpen, onMenu],
+	);
 
 	return (
 		<div className="scout-library">
@@ -767,7 +879,7 @@ export default function LibraryView({
 				    end. The dropdowns used to have a line of their own, which spent a
 				    whole row on five controls that fit beside the search box. */}
 				<div className="scout-library-toolbar">
-					<div className="scout-search-wrap">
+					<div className={`scout-search-wrap${text && ctx.assistant.ready() ? " has-ai" : ""}`}>
 						<Icon name="search" />
 						<input
 							type="text"
@@ -777,6 +889,9 @@ export default function LibraryView({
 							aria-label="Filter the library"
 							onChange={(e) => setText(e.target.value)}
 						/>
+						{text && ctx.assistant.ready() && (
+							<SparkleButton busy={aiAsk.busy} onClick={() => void aiAsk.ask(text)} />
+						)}
 						{text && (
 							<button
 								className="scout-clear"
@@ -788,12 +903,23 @@ export default function LibraryView({
 						)}
 					</div>
 
-					<OrderPills
-						sortBy={sortBy}
-						groupBy={groupBy}
-						onSort={(next) => setOrder({ sortBy: next })}
-						onGroup={(next) => setOrder({ groupBy: next })}
-					/>
+					{Platform.isPhone ? (
+						<DisplayButton
+							layout={layout}
+							sortBy={sortBy}
+							groupBy={groupBy}
+							onLayout={setLayout}
+							onSort={(next) => setOrder({ sortBy: next })}
+							onGroup={(next) => setOrder({ groupBy: next })}
+						/>
+					) : (
+						<OrderPills
+							sortBy={sortBy}
+							groupBy={groupBy}
+							onSort={(next) => setOrder({ sortBy: next })}
+							onGroup={(next) => setOrder({ groupBy: next })}
+						/>
+					)}
 
 					<button
 						className="mod-cta scout-add"
@@ -803,21 +929,25 @@ export default function LibraryView({
 						<span className="scout-add-label">Add</span>
 					</button>
 
-					<div className="scout-layout-toggle" role="group" aria-label="Layout">
-						{LIBRARY_LAYOUTS.map((option) => (
-							<button
-								key={option}
-								className={layout === option ? "is-on" : ""}
-								aria-pressed={layout === option}
-								aria-label={`${LAYOUT_LABELS[option]} layout`}
-								title={LAYOUT_LABELS[option]}
-								onClick={() => setLayout(option)}
-							>
-								<Icon name={LAYOUT_ICONS[option]} />
-							</button>
-						))}
-					</div>
+					{!Platform.isPhone && (
+						<div className="scout-layout-toggle" role="group" aria-label="Layout">
+							{LIBRARY_LAYOUTS.map((option) => (
+								<button
+									key={option}
+									className={layout === option ? "is-on" : ""}
+									aria-pressed={layout === option}
+									aria-label={`${LAYOUT_LABELS[option]} layout`}
+									title={LAYOUT_LABELS[option]}
+									onClick={() => setLayout(option)}
+								>
+									<Icon name={LAYOUT_ICONS[option]} />
+								</button>
+							))}
+						</div>
+					)}
 				</div>
+
+				<AiNoteLine line={aiAsk.line} onDismiss={() => aiAsk.setLine(null)} />
 
 				<FilterBar
 					entries={entries}
@@ -836,93 +966,37 @@ export default function LibraryView({
 							: new ScoutOrganiseModal(ctx).open()
 					}
 					onClearExtra={() => setExtra(emptyRule())}
+					scope={scope?.label ?? null}
+					onClearScope={() => setScope(null)}
 					onSave={saveEdits}
 					onSaveNew={() => void saveAsView()}
 					onRevert={() => loadLens(active)}
 				/>
 
-				<div className={`scout-library-body${drawnAs === "board" ? " is-board" : ""}`}>
+				<div
+					className={`scout-library-body${drawnAs === "board" ? " is-board" : ""}`}
+					ref={measureRoom}
+				>
 					{entries.length === 0 ? (
 						<EmptyLibrary ctx={ctx} />
 					) : visible.length === 0 ? (
 						<p className="scout-message">
 							Nothing matches those filters.
 						</p>
-					) : (
-						drawnAs === "board" ? (
-						<Board
-							groups={groups}
-							card={(entry) => (
-								<EntryCard
-									key={entry.path}
-									ctx={ctx}
-									entry={entry}
-									layout="board"
-									scoutFirst={scoutFirst}
-									version={version}
-									onOpen={onOpen}
-									onMenu={onMenu}
-								/>
-							)}
-						/>
-					) : (
-						shelves.map((group) => {
-							const folded = collapsed.has(group.key);
-							return (
-								<section
-									key={group.key}
-									className={`scout-group${folded ? " is-folded" : ""}`}
-								>
-									{group.label && (
-										<button
-											className="scout-group-title"
-											aria-expanded={!folded}
-											onClick={() => toggleFold(group.key)}
-										>
-											<Icon name="chevron-down" size={14} />
-											{group.label}
-											<span className="scout-count">{group.total}</span>
-										</button>
-									)}
-									{folded ? null : drawnAs === "table" ? (
-										<EntryTable
-											ctx={ctx}
-											entries={group.entries}
-											sortBy={sortBy}
-											onSort={(next) => setOrder({ sortBy: next })}
-											onOpen={onOpen}
-											onMenu={onMenu}
-										/>
-									) : (
-										<div
-											className={`scout-entries scout-entries-${drawnAs}`}
-											style={
-												drawnAs === "grid"
-													? {
-															gridTemplateColumns: `repeat(auto-fill, minmax(${cardSize}px, 1fr))`,
-														}
-													: undefined
-											}
-										>
-											{group.entries.map((entry) => (
-												<EntryCard
-													key={entry.path}
-													ctx={ctx}
-													entry={entry}
-													layout={drawnAs}
-													scoutFirst={scoutFirst}
-													version={version}
-													onOpen={onOpen}
-													onMenu={onMenu}
-												/>
-											))}
-										</div>
-									)}
-								</section>
-							);
-						})
-					)
-					)}
+					) : null}
+					{panes.map((pane) => (
+						<Pane key={pane.key} shown={pane.live} warm={pane.warm}>
+							<Shelves
+								ctx={ctx}
+								state={pane.state}
+								card={card}
+								onToggleFold={toggleFold}
+								onSort={onSort}
+								onOpen={onOpen}
+								onMenu={onMenu}
+							/>
+						</Pane>
+					))}
 					{/* Re-keyed so a fresh observer watches it after each widening. */}
 					{drawnAs !== "board" && drawn < held && (
 						<div

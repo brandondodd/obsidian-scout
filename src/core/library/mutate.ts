@@ -62,6 +62,14 @@ export function today(): string {
 
 const lower = (value: string) => value.toLowerCase();
 
+/** Nothing worth keeping: absent, blank, or a list of blanks. */
+function isEmptyValue(value: unknown): boolean {
+	if (value === null || value === undefined) return true;
+	if (typeof value === "string") return value.trim() === "";
+	if (Array.isArray(value)) return value.every((one) => isEmptyValue(one));
+	return false;
+}
+
 /**
  * The two things a write needs to know about a note: where it is, and what to
  * call it if something goes wrong. A note just created is not in the index
@@ -262,6 +270,38 @@ export class LibraryMutator {
 			{ [key]: names.length > 0 ? [...names] : null },
 			quiet,
 		);
+	}
+
+	/**
+	 * Writes only the properties that are empty at the moment of writing.
+	 *
+	 * For what Scout's AI fills in. The check is made inside the same write
+	 * rather than beforehand, because a batch answer arrives a minute after the
+	 * run read the note, and a mood you typed in that minute must survive it.
+	 * Any spelling of the property counts as present. Returns which were written.
+	 */
+	async fillEmpty(
+		entry: NoteRef,
+		values: Record<string, unknown>,
+	): Promise<string[]> {
+		const file = this.file(entry);
+		if (!file) return [];
+		const written: string[] = [];
+		await this.app.fileManager.processFrontMatter(
+			file,
+			(frontmatter: Record<string, unknown>) => {
+				for (const [key, raw] of Object.entries(values)) {
+					if (!key || raw === null || raw === undefined) continue;
+					const existing = Object.keys(frontmatter).find(
+						(name) => lower(name) === lower(key),
+					);
+					if (existing && !isEmptyValue(frontmatter[existing])) continue;
+					frontmatter[existing ?? key] = this.forProperty(key, raw);
+					written.push(key);
+				}
+			},
+		);
+		return written;
 	}
 
 	/* ------------------------------------------------------------- the body */

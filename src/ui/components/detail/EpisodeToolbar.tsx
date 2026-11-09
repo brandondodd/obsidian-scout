@@ -59,10 +59,13 @@ export function EpisodeToolbar({
 							))}
 						</div>
 					</div>
-					{hasScores && (
+					{/* Held in place, unseen, while the grid loads: arriving with
+					    the scores it could wrap the bar and push the grid down. */}
+					{(hasScores || view.grid.loading) && (
 						<div
 							className="sd-legend"
 							title="Shades compare this show’s own episodes"
+							style={hasScores ? undefined : { visibility: "hidden" }}
 						>
 							<span>Lower</span>
 							<span className="sd-g">

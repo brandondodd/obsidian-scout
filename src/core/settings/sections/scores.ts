@@ -30,10 +30,19 @@ function secretRow(
 	desc: string,
 ): void {
 	const scope = ctx.settings.scopeFor(provider);
+	// Sync carries which secret was chosen, but secret storage is per device:
+	// a phone can show the name of a key it does not have, and quietly go
+	// without everything the key fetches.
+	const missing =
+		scope.get("apiKeySecret", "") !== "" && scope.secret("apiKeySecret").trim() === "";
 	group.addSetting((setting) =>
 		setting
 			.setName(name)
-			.setDesc(desc)
+			.setDesc(
+				missing
+					? `${desc} This device has no key saved under that name yet. Keys aren't synced, so enter it here too.`
+					: desc,
+			)
 			.addComponent((el) =>
 				new SecretComponent(ctx.app, el)
 					.setValue(scope.get("apiKeySecret", ""))

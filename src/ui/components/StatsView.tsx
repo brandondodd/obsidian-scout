@@ -1,3 +1,4 @@
+import { Platform } from "obsidian";
 import React, { useMemo, useState } from "react";
 import type { ScoutContext } from "../../core/context";
 import { allStatuses, statusTone } from "../../core/library/config";
@@ -118,7 +119,15 @@ export default function StatsView({ ctx }: { ctx: ScoutContext }): React.ReactEl
 					<section className="scout-stats-card is-wide">
 						<CardHead title={year === null ? "Finished per year" : "Finished per month"} />
 						<BarChart
-							bars={stats.bars}
+							// Twelve months across a phone is two dozen pixels a
+							// bar, and "Jan" came out as "J…". The initial alone
+							// is how a calendar prints it at that size; the full
+							// name is still each bar's title and its table row.
+							bars={
+								year !== null && Platform.isPhone
+									? stats.bars.map((bar) => ({ ...bar, tick: bar.label.charAt(0) }))
+									: stats.bars
+							}
 							label={`Finished per ${year === null ? "year" : "month"}`}
 							asTable={asTable}
 							current={year === null ? String(now.getFullYear()) : thisMonth}

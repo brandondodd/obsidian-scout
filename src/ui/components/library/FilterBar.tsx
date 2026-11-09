@@ -34,6 +34,9 @@ export interface FilterBarProps {
 	onPreset: (preset: Preset) => void;
 	onEditExtra: () => void;
 	onClearExtra: () => void;
+	/** The name of a set of notes opened from elsewhere, like a thread. */
+	scope?: string | null;
+	onClearScope?: () => void;
 	onSave: () => void;
 	onSaveNew: () => void;
 	onRevert: () => void;
@@ -75,6 +78,21 @@ export function FilterBar(props: FilterBarProps): React.ReactElement {
 			</div>
 
 			<div className="scout-filter-chips">
+				{props.scope && (
+					<span className="scout-filter-chip is-scope">
+						<button disabled>
+							<Icon name="sparkles" size={12} />
+							{props.scope}
+						</button>
+						<button
+							className="scout-filter-chip-x"
+							aria-label={`Remove ${props.scope}`}
+							onClick={props.onClearScope}
+						>
+							<Icon name="x" size={12} />
+						</button>
+					</span>
+				)}
 				{chips.map((chip) => (
 					<span key={`${chip.category}:${chip.label}`} className="scout-filter-chip">
 						<button onClick={() => setPicking(paneFor(chip.category))}>{chip.label}</button>
@@ -102,7 +120,7 @@ export function FilterBar(props: FilterBarProps): React.ReactElement {
 						</button>
 					</span>
 				)}
-				{props.showPresets && chips.length === 0 && ruleIsEmpty(extra) && (
+				{props.showPresets && !props.scope && chips.length === 0 && ruleIsEmpty(extra) && (
 					<>
 						<span className="scout-filter-hint">Try</span>
 						{PRESETS.map((preset) => (

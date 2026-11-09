@@ -237,3 +237,29 @@ describe("runtimeBand", () => {
 		expect(runtimeBand(0)).toBeUndefined();
 	});
 });
+
+describe("moods and themes", () => {
+	it("reads moods off the fixed list and themes only where they snap", () => {
+		const keys = keysOf(
+			traitsOfEntry(
+				entry({
+					moods: ["Cozy", "melancholic"],
+					themes: ["Heists", "chosen family", "the weight of inherited silence"],
+				}),
+			),
+		);
+		expect(keys).toContain("mood:cozy");
+		expect(keys).not.toContain("mood:melancholic");
+		expect(keys).toContain("theme:heist");
+		expect(keys).toContain("theme:found family");
+		expect(keys.some((key) => key.includes("inherited silence"))).toBe(false);
+	});
+
+	it("leaves them out when the evaluation switches them off", () => {
+		const tagged = entry({ tags: ["Drama"], moods: ["tense"], themes: ["grief"] });
+		const keys = keysOf(traitsOfEntry(tagged, { aiTraits: false }));
+		expect(keys).toEqual(["genre:drama"]);
+		// And the cached list is not changed for everyone else by asking.
+		expect(keysOf(traitsOfEntry(tagged))).toContain("mood:tense");
+	});
+});
